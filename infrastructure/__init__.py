@@ -1,0 +1,3 @@
+"""Capa de infraestructura - adaptadores."""
+
+

@@ -37,9 +37,6 @@ wheels/
 # Logs
 *.log
 
-# MD con secrets o datos sensibles
-INSTALL.md
-QUICK_START.md
-USAGE.md
+
 
 

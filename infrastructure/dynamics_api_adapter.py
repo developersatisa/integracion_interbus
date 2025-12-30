@@ -178,10 +178,26 @@ class DynamicsAPIAdapter:
         # Formato: /data/Entity(dataAreaId='itb',PrimaryKey='value')
         # Para ContributionAccountCodeCCs: usar solo EQMCCC
         if entity_name == 'ContributionAccountCodeCCs':
-            quoted_ccc = urllib.parse.quote(item_id)
-            url = f"/data/{entity_name}(EQMCCC='{quoted_ccc}')?company={data_area_id}"
+            if isinstance(item_id, dict):
+                # Clave compuesta pasada como diccionario
+                eqmccc = urllib.parse.quote(str(item_id.get('EQMCCC', '')))
+                worker_place = urllib.parse.quote(str(item_id.get('EQMWorkerPlaceID', '')))
+                url = f"/data/{entity_name}(EQMCCC='{eqmccc}',EQMWorkerPlaceID='{worker_place}')?company={data_area_id}"
+            elif isinstance(item_id, str) and '_' in item_id:
+                # Clave compuesta pasada como string con guion bajo
+                parts = item_id.split('_', 1)
+                if len(parts) == 2:
+                    eqmccc = urllib.parse.quote(parts[0])
+                    worker_place = urllib.parse.quote(parts[1])
+                    url = f"/data/{entity_name}(EQMCCC='{eqmccc}',EQMWorkerPlaceID='{worker_place}')?company={data_area_id}"
+                else:
+                    raise Exception(f"Formato de ID incorrecto: {item_id}")
+            else:
+                # Fallback o error
+                quoted_ccc = urllib.parse.quote(str(item_id))
+                url = f"/data/{entity_name}(EQMCCC='{quoted_ccc}')?company={data_area_id}"
         else:
-            quoted_id = urllib.parse.quote(item_id)
+            quoted_id = urllib.parse.quote(str(item_id))
             url = f"/data/{entity_name}(dataAreaId='{data_area_id}',{key_field}='{quoted_id}')?company={data_area_id}"
         
         # Realizar petición DELETE

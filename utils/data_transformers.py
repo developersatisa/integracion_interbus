@@ -267,6 +267,19 @@ def map_employee_to_com_altas(
         'grupo_biblioteca': convert_string_to_int(record.get('LibrariesGroupATISAId', '')),
         'grupo_anticipos': convert_string_to_int(record.get('AdvanceGroupATISAId', '')),
         'tipo': tipo,
-        'coditraba': coditraba
+        'coditraba': coditraba,
+        
+        # Campos de Dirección
+        'domicilio': normalize_null_or_empty(record.get('Street')),
+        'localidad': normalize_null_or_empty(record.get('City')),
+        'provincia': normalize_null_or_empty(record.get('County')),
+        'nacionalidad': convert_string_to_int(record.get('CountryRegionId', '')),
+        
+        # Campos de Puesto y Contrato
+        'categoria_puesto': normalize_null_or_empty(record.get('JobPositionIdATISA')),
+        'tipo_contrato': normalize_null_or_empty(record.get('ContractTypeID')),
+        'fecha_antig': extract_date_from_datetime(record.get('SeniorityDate', '')),
+        'fechafincontrato': extract_date_from_datetime(record.get('EndDate', '')),
+        'motivo_contrato': normalize_null_or_empty(record.get('Reasonforcontract'))
     }
 

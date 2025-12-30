@@ -47,21 +47,36 @@ def clear_contribution_codes():
             logger.info(f"Registro {i+1}: {json.dumps(record)}")
 
         for record in records:
-            # Obtener valor de EQMCCC
-            eqmccc = str(record.get('EQMCCC') or '').strip()
+            # Obtener valor de EQMCCC y EQMWorkerPlaceID
+            eqmccc_raw = str(record.get('EQMCCC') or '').strip()
+            worker_place_id = str(record.get('EQMWorkerPlaceID') or '').strip()
+            
+            eqmccc = eqmccc_raw
+            
+            # Detectar si EQMCCC viene concatenado (ej: 4113933656_038010001)
+            # Esto sucede si la entidad devuelve la clave compuesta en este campo
+            if '_' in eqmccc_raw:
+                parts = eqmccc_raw.split('_')
+                if len(parts) >= 2:
+                    eqmccc = parts[0]
+                    # Si worker_place_id estaba vacío, lo tomamos del split
+                    if not worker_place_id:
+                        worker_place_id = parts[1]
+                        logger.info(f"Separado EQMCCC compuesto: '{eqmccc_raw}' -> CCC: '{eqmccc}', WP: '{worker_place_id}'")
             
             if not eqmccc:
                 logger.warning(f"Registro sin EQMCCC omitido: {record.get('RecId')}")
                 continue
                 
             try:
-                logger.info(f"Intentando eliminar por EQMCCC: '{eqmccc}'...")
-                dynamics_api.delete_entity_data(entity_name, access_token, eqmccc)
+                logger.info(f"Intentando eliminar por EQMCCC: '{eqmccc}' y EQMWorkerPlaceID: '{worker_place_id}'...")
+                keys = {'EQMCCC': eqmccc, 'EQMWorkerPlaceID': worker_place_id}
+                dynamics_api.delete_entity_data(entity_name, access_token, keys)
                 success_count += 1
             except Exception as e:
                 # No loguear el error completo si es muy largo, solo la primera línea
                 error_msg = str(e).split('\n')[0]
-                logger.error(f"Error eliminando {item_id}: {error_msg}")
+                logger.error(f"Error eliminando {eqmccc}: {error_msg}")
                 error_count += 1
             
             # Limitar para no saturar si hay miles de errores

@@ -18,7 +18,13 @@ class DynamicsAPIAdapter:
     def __init__(self):
         self._base_url = settings.api_base_url
     
-    def get_entity_data(self, entity_name: str, access_token: str, filter_expression: str = None) -> List[Dict[Any, Any]]:
+    def get_entity_data(
+        self,
+        entity_name: str,
+        access_token: str,
+        filter_expression: str = None,
+        metadata: str = "minimal"
+    ) -> List[Dict[Any, Any]]:
         """
         Obtiene todos los datos de una entidad de Dynamics 365.
         
@@ -32,9 +38,13 @@ class DynamicsAPIAdapter:
         """
         conn = http.client.HTTPSConnection(self._base_url)
         
+        accept_header = 'application/json'
+        if metadata:
+            accept_header = f"application/json;odata.metadata={metadata}"
+
         headers = {
             'Authorization': f'Bearer {access_token}',
-            'Accept': 'application/json'
+            'Accept': accept_header
         }
         
         # Construir URL con filtro si se proporciona
@@ -99,13 +109,14 @@ class DynamicsAPIAdapter:
         return json.loads(result_data)
     
     def update_entity_data(
-        self, 
-        entity_name: str, 
-        access_token: str, 
-        item_id: str, 
+        self,
+        entity_name: str,
+        access_token: str,
+        item_id: str,
         data: Dict[Any, Any],
         key_field: str = 'EQMHolidaysAbsencesGroupATISAId',
-        data_area_id: str = 'itb'
+        data_area_id: str = 'itb',
+        if_match: str = None
     ) -> Dict[Any, Any]:
         """
         Actualiza un registro existente en una entidad de Dynamics 365.
@@ -128,6 +139,8 @@ class DynamicsAPIAdapter:
             'Authorization': f'Bearer {access_token}',
             'Accept': 'application/json'
         }
+        if if_match:
+            headers['If-Match'] = if_match
         
         # Dynamics 365 requiere clave compuesta con dataAreaId para la mayoría de entidades
         # Pero para entidades globales (como ContributionAccountCodeCCs) no se usa
@@ -153,6 +166,49 @@ class DynamicsAPIAdapter:
         if response.status == 204:
             return data
         
+        return json.loads(result_data) if result_data else data
+
+    def update_entity_data_by_url(
+        self,
+        entity_url: str,
+        access_token: str,
+        data: Dict[Any, Any],
+        if_match: str = None
+    ) -> Dict[Any, Any]:
+        """
+        Actualiza un registro usando la URL completa o el path OData.
+        """
+        conn = http.client.HTTPSConnection(self._base_url)
+        payload = json.dumps(data)
+
+        headers = {
+            'Content-Type': 'application/json',
+            'Authorization': f'Bearer {access_token}',
+            'Accept': 'application/json'
+        }
+        if if_match:
+            headers['If-Match'] = if_match
+
+        url = entity_url
+        if entity_url.startswith("http"):
+            parsed = urllib.parse.urlparse(entity_url)
+            url = parsed.path
+            if parsed.query:
+                url = f"{url}?{parsed.query}"
+
+        full_url = f"https://{self._base_url}{url}"
+        logger.info(f"🌐 API REQUEST [PATCH]: {full_url}")
+        conn.request("PATCH", url, payload, headers)
+
+        response = conn.getresponse()
+        result_data = response.read().decode("utf-8")
+
+        if response.status not in [200, 204]:
+            raise Exception(f"Error actualizando registro: {result_data}")
+
+        if response.status == 204:
+            return data
+
         return json.loads(result_data) if result_data else data
     
     def delete_entity_data(self, entity_name: str, access_token: str, item_id: str, key_field: str = 'EQMHolidaysAbsencesGroupATISAId', data_area_id: str = 'itb') -> bool:

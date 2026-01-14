@@ -4,7 +4,7 @@ Maneja conversiones de tipos, fechas y valores NULL/vacíos.
 """
 from decimal import Decimal, InvalidOperation
 from typing import Dict, Any, Optional
-from datetime import datetime
+from datetime import datetime, date
 import logging
 
 logger = logging.getLogger(__name__)
@@ -62,6 +62,23 @@ def convert_string_to_decimal(value: str) -> Optional[Decimal]:
     except (ValueError, TypeError, InvalidOperation) as e:
         logger.warning(f"Error convirtiendo '{value}' a decimal: {e}")
         return None
+
+
+def normalize_gender(value: Optional[Any]) -> Optional[str]:
+    """
+    Normaliza el género para com_altas (Female -> M, Male -> V).
+    """
+    if value is None:
+        return None
+    value_str = str(value).strip()
+    if not value_str:
+        return None
+    value_lower = value_str.lower()
+    if value_lower == 'female':
+        return 'M'
+    if value_lower == 'male':
+        return 'V'
+    return value_str
 
 
 def extract_date_from_datetime(datetime_str: str) -> Optional[str]:
@@ -129,6 +146,30 @@ def encode_etag_base64(etag: str) -> str:
         return ''
 
 
+def normalize_etag(etag: str) -> str:
+    """
+    Normaliza el ETag eliminando escapes comunes de comillas.
+    """
+    if not etag:
+        return ''
+    return etag.replace('\\"', '"').replace("\\'", "'")
+
+
+def decode_etag_base64(etag_base64: str) -> str:
+    """
+    Decodifica un ETag almacenado en base64.
+    """
+    import base64
+    if not etag_base64:
+        return ''
+    try:
+        decoded = base64.b64decode(etag_base64.encode('utf-8')).decode('utf-8')
+        return normalize_etag(decoded)
+    except Exception as e:
+        logger.error(f"Error decodificando ETag base64: {e}")
+        return ''
+
+
 def normalize_null_or_empty(value: Any) -> Optional[Any]:
     """
     Normaliza valores NULL o vacíos a None.
@@ -144,6 +185,94 @@ def normalize_null_or_empty(value: Any) -> Optional[Any]:
     if isinstance(value, str) and value.strip() == '':
         return None
     return value
+
+
+def normalize_string(value: Any) -> Optional[str]:
+    """
+    Normaliza valores a string, retornando None si está vacío.
+    """
+    if value is None:
+        return None
+    if isinstance(value, str):
+        value_str = value.strip()
+    else:
+        value_str = str(value)
+    return value_str if value_str else None
+
+
+def format_date_for_dynamics(value: Any) -> Optional[str]:
+    """
+    Convierte fechas a formato ISO esperado por Dynamics 365.
+    """
+    if value is None:
+        return None
+    if isinstance(value, datetime):
+        dt_value = value.replace(microsecond=0)
+        if dt_value.tzinfo is None:
+            return dt_value.isoformat() + 'Z'
+        return dt_value.isoformat()
+    if isinstance(value, date):
+        return value.strftime('%Y-%m-%dT00:00:00Z')
+
+    value_str = str(value).strip()
+    if not value_str:
+        return None
+    if len(value_str) == 10:
+        return f"{value_str}T00:00:00Z"
+    if ' ' in value_str and 'T' not in value_str:
+        value_str = value_str.replace(' ', 'T')
+    if value_str.endswith('Z') or '+' in value_str:
+        return value_str
+    return f"{value_str}Z"
+
+
+def map_com_altas_to_employee_modifications(
+    record: Dict[str, Any],
+    processed_value: str = "Yes",
+    personnel_number: Optional[str] = None,
+    only_processed: bool = False
+) -> Dict[str, Any]:
+    """
+    Mapea un registro de com_altas a formato EmployeeModifications para POST.
+    """
+    if only_processed:
+        return {'Processed': processed_value}
+
+    salario = record.get('salario')
+    if isinstance(salario, Decimal):
+        salario = str(salario)
+
+    nummat = personnel_number or record.get('nummat')
+    payload = {
+        'CompanyIdATISA': normalize_string(record.get('codiemp')),
+        'FirstName': normalize_string(record.get('nombre')),
+        'LastName1': normalize_string(record.get('apellido1')),
+        'LastName2': normalize_string(record.get('apellido2')),
+        'Gender': normalize_string(record.get('sexo')),
+        'NASS': normalize_string(record.get('naf')),
+        'BirthDate': format_date_for_dynamics(record.get('fechanacimiento')),
+        'Email': normalize_string(record.get('email')),
+        'Phone': normalize_string(record.get('telefono')),
+        'ZipCode': normalize_string(record.get('cpostal')),
+        'StartDate': format_date_for_dynamics(record.get('fechaalta')),
+        'Salary': salario,
+        'BankAccount': normalize_string(record.get('ccc')),
+        'PersonnelNumber': normalize_string(nummat),
+        'HolidaysAbsencesGroupATISAId': normalize_string(record.get('grupo_vacaciones')),
+        'LibrariesGroupATISAId': normalize_string(record.get('grupo_biblioteca')),
+        'AdvanceGroupATISAId': normalize_string(record.get('grupo_anticipos')),
+        'Street': normalize_string(record.get('domicilio')),
+        'City': normalize_string(record.get('localidad')),
+        'County': normalize_string(record.get('provincia')),
+        'JobPositionIdATISA': normalize_string(record.get('categoria_puesto')),
+        'ContractTypeID': normalize_string(record.get('tipo_contrato')),
+        'EndDate': format_date_for_dynamics(record.get('fechafincontrato')),
+        'Reasonforcontract': normalize_string(record.get('motivo_contrato')),
+        'VATNum': normalize_string(record.get('nif')),
+        'Processed': processed_value
+    }
+
+    return {k: v for k, v in payload.items() if v is not None}
 
 
 def is_numeric_string(value: str) -> bool:
@@ -215,7 +344,25 @@ def map_employee_to_com_altas(
             if telefono_trabajador and is_numeric_string(str(telefono_trabajador)):
                 telefono_final = telefono_trabajador
         # Si no hay trabajador activo o no es válido, queda None
-    
+
+    # Procesar teléfono móvil con lógica similar al teléfono
+    telmovil_endpoint = normalize_null_or_empty(record.get('Mobilephone'))
+    telmovil_final = None
+
+    if telmovil_endpoint:
+        if is_numeric_string(str(telmovil_endpoint)):
+            telmovil_final = telmovil_endpoint
+        else:
+            if active_record and tipo == 'M':
+                telmovil_trabajador = active_record.get('telmovil')
+                if telmovil_trabajador and is_numeric_string(str(telmovil_trabajador)):
+                    telmovil_final = telmovil_trabajador
+    else:
+        if active_record and tipo == 'M':
+            telmovil_trabajador = active_record.get('telmovil')
+            if telmovil_trabajador and is_numeric_string(str(telmovil_trabajador)):
+                telmovil_final = telmovil_trabajador
+
     # Procesar naf (NASS) con lógica especial (igual que telefono)
     nass_endpoint = normalize_null_or_empty(record.get('NASS'))
     naf_final = None
@@ -251,18 +398,22 @@ def map_employee_to_com_altas(
     
     return {
         'codiemp': normalize_null_or_empty(record.get('CompanyIdATISA')),
+        'codicen': '001',
         'nombre': normalize_null_or_empty(record.get('FirstName')),
         'apellido1': normalize_null_or_empty(record.get('LastName1')),
         'apellido2': normalize_null_or_empty(record.get('LastName2')),
-        'sexo': normalize_null_or_empty(record.get('Gender')),
+        'nif': normalize_null_or_empty(record.get('VATNum')),
+        'sexo': normalize_gender(record.get('Gender')),
         'naf': naf_final,
         'fechanacimiento': extract_date_from_datetime(record.get('BirthDate', '')),
         'email': normalize_null_or_empty(record.get('Email')),
         'telefono': telefono_final,
+        'telmovil': telmovil_final,
         'cpostal': normalize_null_or_empty(record.get('ZipCode')),
         'fechaalta': extract_date_from_datetime(record.get('StartDate', '')),
         'salario': salario_final,
         'ccc': normalize_null_or_empty(record.get('BankAccount')),
+        'nummat': normalize_null_or_empty(record.get('PersonnelNumber')),
         'grupo_vacaciones': convert_string_to_int(record.get('HolidaysAbsencesGroupATISAId', '')),
         'grupo_biblioteca': convert_string_to_int(record.get('LibrariesGroupATISAId', '')),
         'grupo_anticipos': convert_string_to_int(record.get('AdvanceGroupATISAId', '')),
@@ -273,10 +424,11 @@ def map_employee_to_com_altas(
         'domicilio': normalize_null_or_empty(record.get('Street')),
         'localidad': normalize_null_or_empty(record.get('City')),
         'provincia': normalize_null_or_empty(record.get('County')),
-        'nacionalidad': convert_string_to_int(record.get('CountryRegionId', '')),
+        'nacionalidad': normalize_null_or_empty(record.get('NationalityCountryRegion')),
         
         # Campos de Puesto y Contrato
-        'categoria_puesto': normalize_null_or_empty(record.get('JobPositionIdATISA')),
+        'puesto': normalize_null_or_empty(record.get('JobPositionIdATISA')),
+        'subpuesto': normalize_null_or_empty(record.get('SubPosition')),
         'tipo_contrato': normalize_null_or_empty(record.get('ContractTypeID')),
         'fecha_antig': extract_date_from_datetime(record.get('SeniorityDate', '')),
         'fechafincontrato': extract_date_from_datetime(record.get('EndDate', '')),

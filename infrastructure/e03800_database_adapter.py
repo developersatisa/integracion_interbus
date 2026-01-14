@@ -22,6 +22,7 @@ class E03800DatabaseAdapter:
         self._password = settings.db_password
         self._database = "e03800"  # Base de datos específica
         self._dbf_base_path = "/mnt/tierra_laboral_atinomi/"  # Ruta base para archivos DBF
+        self._trabajadores_nif_column = None
     
     def _get_connection(self):
         """Obtiene una conexión a la base de datos e03800."""
@@ -38,6 +39,39 @@ class E03800DatabaseAdapter:
         except Error as e:
             logger.error(f"Error conectando a MySQL e03800: {e}")
             raise
+
+    def _resolve_trabajadores_nif_column(self, connection) -> str:
+        """
+        Resuelve el nombre de columna de NIF/DNI en trabajadores.
+        Prioriza 'nif' y cae a 'dni' si existe.
+        """
+        if self._trabajadores_nif_column:
+            return self._trabajadores_nif_column
+
+        cursor = connection.cursor()
+        try:
+            cursor.execute(
+                """
+                SELECT COLUMN_NAME
+                FROM information_schema.columns
+                WHERE table_schema = %s
+                  AND table_name = 'trabajadores'
+                  AND column_name IN ('nif', 'dni')
+                """,
+                (self._database,)
+            )
+            columns = {row[0] for row in cursor.fetchall()}
+        finally:
+            cursor.close()
+
+        if 'nif' in columns:
+            self._trabajadores_nif_column = 'nif'
+        elif 'dni' in columns:
+            self._trabajadores_nif_column = 'dni'
+        else:
+            self._trabajadores_nif_column = 'nif'
+
+        return self._trabajadores_nif_column
     
     def get_gruposervicios_by_service(self, id_servicios: int) -> List[Dict[str, Any]]:
         """
@@ -632,7 +666,7 @@ class E03800DatabaseAdapter:
                 - 'exists': True
                 - 'has_active': True/False (si hay al menos un registro con fechabaja = NULL o vacío)
                 - 'active_record': Dict con datos del registro activo (si existe) o None
-                    - Incluye: coditraba, fechaalta, fechabaja
+                    - Incluye: coditraba, fechaalta, fechabaja, telefono, numeross, nif
                 - 'all_records': List[Dict] con TODOS los registros del trabajador
         """
         connection = None
@@ -642,14 +676,16 @@ class E03800DatabaseAdapter:
             connection = self._get_connection()
             cursor = connection.cursor(dictionary=True)
             
+            nif_column = self._resolve_trabajadores_nif_column(connection)
+
             # Obtener TODOS los registros del trabajador (no solo uno)
-            # Incluir telefono y numeross para poder usarlos en MODIFICACIONES
-            query = """
-                SELECT coditraba, fechaalta, fechabaja, telefono, numeross
+            # Incluir telefono, numeross y NIF/DNI para poder usarlos en MODIFICACIONES
+            query = f"""
+                SELECT coditraba, fechaalta, fechabaja, telefono, numeross, {nif_column} AS nif
                 FROM trabajadores
-                WHERE codiemp = %s 
-                  AND nombre = %s 
-                  AND apellido1 = %s 
+                WHERE codiemp = %s
+                  AND nombre = %s
+                  AND apellido1 = %s
                   AND apellido2 = %s
                 ORDER BY fechaalta DESC
             """

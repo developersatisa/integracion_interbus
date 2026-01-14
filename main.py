@@ -183,7 +183,10 @@ def test_employee_modifications():
         logger.info("-"*60)
         
         entity_name = "EmployeeModifications"
-        employee_data = dynamics_api.get_entity_data(entity_name, access_token)
+        employee_data = dynamics_api.get_entity_data(
+            entity_name,
+            access_token
+        )
         
         # Mostrar resultados
         logger.info("\n" + "="*60)

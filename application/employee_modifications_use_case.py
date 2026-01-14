@@ -132,8 +132,10 @@ class SyncEmployeeModificationsUseCase:
         nombre = normalize_null_or_empty(record.get('FirstName'))
         apellido1 = normalize_null_or_empty(record.get('LastName1'))
         apellido2 = normalize_null_or_empty(record.get('LastName2'))
-        
-        if not all([codiemp, nombre, apellido1]):
+        vatnum = normalize_null_or_empty(record.get('VATNum'))
+        vatnum_normalized = str(vatnum).strip().upper() if vatnum else None
+
+        if not all([codiemp, nombre, apellido1, vatnum_normalized]):
             logger.warning("Faltan campos de identificación del trabajador")
             return {'status': 'skipped', 'reason': 'missing_fields'}
         
@@ -158,6 +160,17 @@ class SyncEmployeeModificationsUseCase:
             # CASO 2.A: Hay al menos un registro activo
             fechaalta = active_record.get('fechaalta')
             fechabaja = active_record.get('fechabaja')  # Será None o ''
+
+            active_nif = normalize_null_or_empty(active_record.get('nif'))
+            active_nif_normalized = str(active_nif).strip().upper() if active_nif else None
+
+            if vatnum_normalized and active_nif_normalized and vatnum_normalized != active_nif_normalized:
+                return {
+                    'tipo': 'M',
+                    'coditraba': str(active_record.get('coditraba', '0')),
+                    'active_record': active_record,
+                    'status': 'ok'
+                }
             
             # Verificar rango
             if self._is_in_range(created_date, fechaalta, fechabaja):
@@ -330,7 +343,12 @@ class SyncEmployeeModificationsUseCase:
             if self.employee_adapter.etag_exists(etag_encoded):
                 return {'status': 'skipped', 'reason': 'etag_exists'}
             
-            # PASO 2: Identificar tipo (ALTA o MODIFICACIÓN)
+            # PASO 2: Validar VATNum (DNI/NIF obligatorio)
+            vatnum = normalize_null_or_empty(record.get('VATNum'))
+            if not vatnum:
+                return {'status': 'error', 'reason': 'missing_vatnum'}
+
+            # PASO 3: Identificar tipo (ALTA o MODIFICACIÓN)
             created_date_str = record.get('CreatedDate', '')
             if not created_date_str:
                 return {'status': 'error', 'reason': 'missing_created_date'}
@@ -345,7 +363,7 @@ class SyncEmployeeModificationsUseCase:
             coditraba = type_info['coditraba']
             active_record = type_info.get('active_record')  # Obtener active_record si existe (solo para MODIFICACIÓN)
             
-            # PASO 3: Validación de orden cronológico
+            # PASO 4: Validación de orden cronológico
             codiemp = normalize_null_or_empty(record.get('CompanyIdATISA'))
             nombre = normalize_null_or_empty(record.get('FirstName'))
             apellido1 = normalize_null_or_empty(record.get('LastName1'))
@@ -359,14 +377,41 @@ class SyncEmployeeModificationsUseCase:
             if not is_chronological:
                 return {'status': 'skipped', 'reason': 'out_of_chronological_order'}
             
-            # PASO 4: Mapear datos (pasar active_record para usar telefono de trabajadores si es MODIFICACIÓN)
+            # PASO 5: Mapear datos (pasar active_record para usar telefono de trabajadores si es MODIFICACIÓN)
             mapped_data = map_employee_to_com_altas(record, tipo, coditraba, active_record)
-            
-            # PASO 5: Crear registros
-            # 5.1: Insertar en com_altas
+            mapped_data['provincia'] = self.employee_adapter.resolve_provincia_descripcion(
+                mapped_data.get('provincia')
+            )
+            mapped_data['nacionalidad'] = self.employee_adapter.resolve_nacionalidad_codigo(
+                mapped_data.get('nacionalidad')
+            )
+            codiemp = mapped_data.get('codiemp')
+            puesto_raw = normalize_null_or_empty(record.get('JobPositionIdATISA'))
+            subpuesto_raw = normalize_null_or_empty(record.get('SubPosition'))
+
+            if codiemp and puesto_raw:
+                codpuesto = self.employee_adapter.resolve_puesto_codpuesto(
+                    codiemp,
+                    puesto_raw,
+                    "lista_puestos"
+                )
+                if codpuesto:
+                    mapped_data['puesto'] = f"{codiemp}-{codpuesto}"
+
+            if codiemp and subpuesto_raw:
+                codsubpuesto = self.employee_adapter.resolve_puesto_codpuesto(
+                    codiemp,
+                    subpuesto_raw,
+                    "lista_subpuestos"
+                )
+                if codsubpuesto:
+                    mapped_data['subpuesto'] = codsubpuesto
+
+            # PASO 6: Crear registros
+            # 6.1: Insertar en com_altas
             com_altas_id = self.employee_adapter.insert_com_altas(mapped_data)
-            
-            # 5.2: Insertar en dfo_com_altas
+
+            # 6.2: Insertar en dfo_com_altas
             personnel_number = normalize_null_or_empty(record.get('PersonnelNumber'))
             # Convertir created_date de ISO a formato MySQL DATETIME
             created_date_mysql = convert_datetime_iso_to_mysql(created_date_str)
@@ -402,7 +447,10 @@ class SyncEmployeeModificationsUseCase:
         try:
             # Obtener datos del endpoint
             logger.info("Obteniendo datos de EmployeeModifications...")
-            records = self.dynamics_api.get_entity_data("EmployeeModifications", access_token)
+            records = self.dynamics_api.get_entity_data(
+                "EmployeeModifications",
+                access_token
+            )
             
             if not records:
                 logger.warning("No se obtuvieron registros del endpoint")

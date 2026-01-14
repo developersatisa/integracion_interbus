@@ -41,47 +41,47 @@ CREATE TABLE IF NOT EXISTS `dfo_com_altas` (
 | `StartDate` | datetime | `fechaalta` | date | ✅ | Fecha de alta (extraer solo fecha de datetime) |
 | `LibrariesGroupATISAId` | string | `grupo_biblioteca` | int(10) | ✅ | Grupo de biblioteca (convertir string a int) |
 | `AdvanceGroupATISAId` | string | `grupo_anticipos` | int(10) | ✅ | Grupo de anticipos (convertir string a int) |
-| `NASS` | string | `naf` | char(12) | ✅ | Número de afiliación a la seguridad social |
+| `NASS` | string | `naf` | char(12) | ✅ | Número de afiliación a la seguridad social (trabajadores.numeross) |
 | `BirthDate` | datetime | `fechanacimiento` | date | ✅ | Fecha de nacimiento (extraer solo fecha de datetime) |
 | `Email` | string | `email` | varchar(120) | ✅ | Correo electrónico |
 | `Phone` | string | `telefono` | char(13) | ✅ | Teléfono |
 | `FirstName` | string | `nombre` | char(15) | ✅ | Nombre del empleado |
 | `ZipCode` | string | `cpostal` | char(5) | ✅ | Código postal |
 | `CreatedDate` | datetime | - | - | ❌ | No se integra de momento |
-| `PersonnelNumber` | string | - | - | ❌ | No se integra de momento |
+| `PersonnelNumber` | string | `nummat` | varchar(10) | ✅ | Número de matrícula (trabajadores.nummat) |
 | `CompanyId` | string | - | - | ❌ | No se integra de momento |
-| `EndDate` | datetime | - | - | ❌ | No se integra de momento |  
-| `SeniorityDate` | datetime | - | - | ❌ | No se integra de momento |
+| `EndDate` | datetime | `fechafincontrato` | date | ✅ | Fecha fin contrato (extraer solo fecha de datetime) |  
+| `SeniorityDate` | datetime | `fecha_antig` | char(100) | ✅ | Fecha antiguedad (extraer solo fecha de datetime) |
 | `educationlevel` | string | - | - | ❌ | No se integra de momento |
 | `VacationSettlement` | string | - | - | ❌ | No se integra de momento |
 | `DailySchedule` | number | - | - | ❌ | No se integra de momento |
 | `HighsLowsChangesID` | string | - | - | ❌ | No se integra de momento |
-| `Street` | string | - | - | ❌ | No se integra de momento |
+| `Street` | string | `domicilio` | char(60) | ✅ | Dirección |
 | `CNAEOccupationCode` | string | - | - | ❌ | No se integra de momento |
-| `JobPositionIdATISA` | string | - | - | ❌ | No se integra de momento | //que significa categoria puesto o puesto2
+| `JobPositionIdATISA` | string | `puesto` | varchar(120) | ✅ | Lookup en `lista_puestos` por `codiemp` y `concepto LIKE` (com_altas guarda `codiemp-codpuesto`) |
 | `TransitionReasonDescription` | string | - | - | ❌ | No se integra de momento |
 | `AmountKmID` | string | - | - | ❌ | No se integra de momento |
 | `QuotationGroupATISAId` | string | - | - | ❌ | No se integra de momento |
-| `VATNum` | string | - | - | ❌ | No se integra de momento | //dni
+| `VATNum` | string | `nif` | char(14) | ✅ | DNI/NIF (obligatorio) |
 | `DisabilityPercentage` | number | - | - | ❌ | No se integra de momento |
 | `Department` | string | - | - | ❌ | No se integra de momento |   
 | `TestingPeriodId` | string | - | - | ❌ | No se integra de momento |
 | `CCC` | string | - | - | ❌ | No se integra de momento |   //codigo cuenta cotizacion
 | `Observations` | string | - | - | ❌ | No se integra de momento |
-| `SubPosition` | string | - | - | ❌ | No se integra de momento |  //que significa categoria puesto o puesto2
+| `SubPosition` | string | `subpuesto` | varchar(120) | ✅ | Lookup en `lista_subpuestos` (com_altas guarda `codpuesto`) |
 | `IncidentGroupATISAId` | string | - | - | ❌ | No se integra de momento |
-| `County` | string | - | - | ❌ | No se integra de momento |   Pais 
+| `County` | string | `provincia` | char(30) | ✅ | Si llega como ID numerico, se resuelve en `provincias_integracion.descripcion` |
 | `LeaveGroupATISAId` | string | - | - | ❌ | No se integra de momento |
-| `NationalityCountryRegion` | string/null | - | - | ❌ | No se integra de momento |   // provincia o comunidad
-| `City` | string | - | - | ❌ | No se integra de momento |  //ciudad
+| `NationalityCountryRegion` | string/null | `nacionalidad` | int(10) | ✅ | Se busca en `acceso.paises` (pais -> codpais) |
+| `City` | string | `localidad` | char(30) | ✅ | Ciudad |
 | `VacationCalenderId` | string | - | - | ❌ | No se integra de momento |  
-| `Reasonforcontract` | string | - | - | ❌ | No se integra de momento |
+| `Reasonforcontract` | string | `motivo_contrato` | text | ✅ | Motivo de contrato |
 | `BenefitEmploymentCategoryId` | string | - | - | ❌ | No se integra de momento |
-| `CountryRegionId` | string | - | - | ❌ | No se integra de momento |   // PAIS
+| `CountryRegionId` | string | - | - | ❌ | No se integra (Supabase devuelve int y en BD se maneja string) |
 | `Processed` | string | - | - | ❌ | No se integra de momento |    //una vez procesado por atisa
 | `WorkerPlaceID` | string | - | - | ❌ | No se integra de momento |    //que significa categoria puesto o puesto2
-| `ContractTypeID` | string | - | - | ❌ | No se integra de momento | // tipo_contrato
-| `Mobilephone` | string | - | - | ❌ | No se integra de momento |
+| `ContractTypeID` | string | `tipo_contrato` | char(3) | ✅ | Tipo de contrato |
+| `Mobilephone` | string | `telmovil` | int(13) | ✅ | Teléfono móvil |
 | `VacationBalanceId` | string | - | - | ❌ | No se integra de momento |
 
 ## Campos de com_altas (para referencia)
@@ -233,10 +233,11 @@ CREATE TABLE IF NOT EXISTS `dfo_com_altas` (
        - El registro es nuevo y necesita ser validado
        - Continuar con **PASO 2: Identificación de tipo** (ver lógica de negocio abajo)
      
-     **PASO 2: Identificación de tipo (ALTA vs MODIFICACIÓN)**
-     - Aplicar la lógica de negocio (CASO 1, CASO 2.A, CASO 2.B, etc.)
-     - Determinar si es ALTA o MODIFICACIÓN
-     - Si es OMITIR (solicitud antigua), no crear registro
+    **PASO 2: Identificación de tipo (ALTA vs MODIFICACIÓN)**
+    - Aplicar la lógica de negocio (CASO 1, CASO 2.A, CASO 2.B, etc.)
+    - Determinar si es ALTA o MODIFICACIÓN
+    - Validar que `VATNum` exista (DNI/NIF obligatorio)
+    - Si es OMITIR (solicitud antigua), no crear registro
      
      **PASO 3: Validación de orden cronológico (antes de insertar)**
      - **IMPORTANTE**: La validación es específica por tipo (ALTA o MODIFICACIÓN)
@@ -291,8 +292,8 @@ CREATE TABLE IF NOT EXISTS `dfo_com_altas` (
        - `coditraba` en `com_altas` = `coditraba` del trabajador activo
        - **Razón**: Es una modificación de un trabajador existente, mantener su código
      
-     **PASO 5: Creación de registros**
-     - **IMPORTANTE**: Primero crear en `com_altas` para obtener el `id`, luego crear en `dfo_com_altas`
+    **PASO 5: Creación de registros**
+    - **IMPORTANTE**: Primero crear en `com_altas` para obtener el `id`, y finalmente crear en `dfo_com_altas`
      - **Paso 5.1**: Crear registro en `com_altas` (base de datos `e03800`) con los datos mapeados:
        - Incluir `tipo` ('A' o 'M')
        - Incluir `coditraba` (0 para altas, código del trabajador para modificaciones)
@@ -300,12 +301,25 @@ CREATE TABLE IF NOT EXISTS `dfo_com_altas` (
        - **Campos no mapeados**: Se insertan como `NULL`
        - **Valores NULL o vacíos del endpoint**: Se insertan como `NULL` en la base de datos
        - **Conversiones fallidas** (string no numérico, fecha inválida): Se insertan como `NULL`
-     - **Paso 5.2**: Obtener el `id` autoincremental generado de `com_altas`
-     - **Paso 5.3**: Guardar relación en `dfo_com_altas` (base de datos `interbus_365`):
-       - `id`: INT directo (referencia a `com_altas.id` obtenido en paso 5.2)
-       - `etag`: VARCHAR con el ETag codificado en base64
-       - `personnel_number`: VARCHAR con el `PersonnelNumber` (opcional, para referencia)
-       - `created_date`: DATETIME con el `CreatedDate` del endpoint (para validación cronológica)
+    - **Paso 5.2**: Obtener el `id` autoincremental generado de `com_altas`
+    - **Paso 5.3**: Guardar relación en `dfo_com_altas` (base de datos `interbus_365`):
+      - `id`: INT directo (referencia a `com_altas.id` obtenido en paso 5.2)
+      - `etag`: VARCHAR con el ETag codificado en base64
+      - `personnel_number`: VARCHAR con el `PersonnelNumber` (opcional, para referencia)
+      - `created_date`: DATETIME con el `CreatedDate` del endpoint (para validación cronológica)
+
+## Sincronización Manual de `trabajadores` desde `com_altas`
+
+Existe un script separado para crear registros en `trabajadores` a partir de `com_altas` (solo `tipo = 'A'`).
+El flujo **no** se ejecuta durante la sincronización normal de EmployeeModifications.
+
+```bash
+python scripts/sync_trabajadores_from_com_altas.py
+```
+
+- Lee `com_altas` con `tipo = 'A'`.
+- Verifica si el trabajador ya existe en `trabajadores` (por `codiemp`, `nombre`, `apellido1`, `apellido2`, y NIF/DNI si existe).
+- Si no existe, lo crea en `trabajadores`.
 
 ## Lógica de Negocio: Identificación de Altas vs Modificaciones
 
@@ -318,6 +332,10 @@ Para identificar a qué trabajador pertenece un registro del endpoint, se usan l
 - `FirstName` → `nombre`
 - `LastName1` → `apellido1`
 - `LastName2` → `apellido2`
+
+**Nota**: `VATNum` (DNI/NIF) es obligatorio, pero **no** se usa para encontrar al trabajador (puede cambiar).
+Se compara contra `trabajadores.nif` **solo cuando hay trabajador activo**; si difiere, se trata como modificación.
+Si no hay trabajador activo, la comparación no aplica y se evalúa como alta según fechas.
 
 ### Tabla de Referencia: `trabajadores` (base de datos `e03800`)
 
@@ -338,6 +356,8 @@ La tabla `trabajadores` en la base de datos `e03800` contiene los trabajadores a
 
   **CASO 2.A: SÍ existe trabajador ACTIVO (`fechabaja = NULL` o `fechabaja = ''`)**
   - **Significado**: Hay al menos un registro del trabajador que está activo (no dado de baja)
+  - **Validación de NIF (VATNum)**:
+    - Si `VATNum` **no coincide** con `trabajadores.nif` del registro activo → **MODIFICACIÓN** (`tipo = 'M'`)
   - **Evaluación del rango**: Verificar que la petición pertenezca al rango de este trabajador activo
     - **Rango**: Desde `fechaalta` del trabajador activo hasta `fechabaja` (si existe) o actualidad
     
@@ -444,8 +464,8 @@ def find_trabajador(self, codiemp: str, nombre: str, apellido1: str, apellido2: 
         Dict con:
             - 'exists': True
             - 'has_active': True/False (si hay al menos un registro con fechabaja = NULL o vacío)
-            - 'active_record': Dict con datos del registro activo (si existe) o None
-                - Incluye: coditraba, fechaalta, fechabaja
+                - 'active_record': Dict con datos del registro activo (si existe) o None
+                    - Incluye: coditraba, fechaalta, fechabaja, telefono, numeross, nif
             - 'all_records': List[Dict] con TODOS los registros del trabajador
     """
     connection = self._get_connection()
@@ -453,7 +473,7 @@ def find_trabajador(self, codiemp: str, nombre: str, apellido1: str, apellido2: 
     
     # Obtener TODOS los registros del trabajador (no solo uno)
     query = """
-        SELECT coditraba, fechaalta, fechabaja
+        SELECT coditraba, fechaalta, fechabaja, telefono, numeross, nif
         FROM trabajadores
         WHERE codiemp = %s 
           AND nombre = %s 
@@ -570,18 +590,25 @@ else:
     # CASO 2: Existe (puede tener múltiples registros)
     has_active = trabajador_info.get('has_active', False)
     active_record = trabajador_info.get('active_record')  # Puede ser None
+    vatnum = (record.get('VATNum') or '').strip().upper()
     
     if has_active and active_record:
         # CASO 2.A: Hay al menos un registro activo
         fechaalta = active_record.get('fechaalta')
         fechabaja = active_record.get('fechabaja')  # Será NULL o ''
-        
-        # Verificar rango
-        if self._is_in_range(created_date, fechaalta, fechabaja):
+        active_nif = (active_record.get('nif') or '').strip().upper()
+
+        # Si el NIF no coincide con el registro activo, es modificación
+        if vatnum and active_nif and vatnum != active_nif:
             tipo = 'M'
             coditraba = active_record.get('coditraba')
         else:
-            return {'status': 'skipped', 'reason': 'out_of_range'}
+            # Verificar rango
+            if self._is_in_range(created_date, fechaalta, fechabaja):
+                tipo = 'M'
+                coditraba = active_record.get('coditraba')
+            else:
+                return {'status': 'skipped', 'reason': 'out_of_range'}
     else:
         # CASO 2.B: Todos los registros tienen fechabaja
         ultima_fechabaja = e03800_adapter.get_last_fechabaja(codiemp, nombre, apellido1, apellido2)

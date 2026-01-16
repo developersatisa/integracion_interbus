@@ -147,21 +147,33 @@ class SyncEmployeeModificationsUseCase:
         # BAJA rápida: EndDate != placeholder y trabajador activo
         end_date_str = record.get('EndDate')
         if end_date_str:
+            end_date_value = str(end_date_str)
+            placeholder_prefixes = ('2154-12-31', '9999-12-31')
+            is_placeholder = end_date_value.startswith(placeholder_prefixes)
             try:
-                end_dt = datetime.fromisoformat(str(end_date_str).replace('Z', '+00:00'))
-                if end_dt != datetime(2154, 12, 31, 23, 59, 59):
-                    has_active = trabajador_info.get('has_active', False) if trabajador_info else False
-                    active_record = trabajador_info.get('active_record') if trabajador_info else None
-                    if has_active and active_record:
-                        return {
-                            'tipo': 'B',
-                            'coditraba': str(active_record.get('coditraba', '0')),
-                            'active_record': active_record,
-                            'status': 'ok'
-                        }
-                    return {'status': 'skipped', 'reason': 'no_active_for_baja'}
+                end_dt = datetime.fromisoformat(end_date_value.replace('Z', '+00:00'))
+                if end_dt.tzinfo is not None:
+                    end_dt = end_dt.astimezone().replace(tzinfo=None)
+                placeholder_datetimes = {
+                    datetime(2154, 12, 31, 23, 59, 59),
+                    datetime(9999, 12, 31, 23, 59, 59)
+                }
+                if end_dt in placeholder_datetimes:
+                    is_placeholder = True
             except (ValueError, TypeError):
-                pass
+                end_dt = None
+
+            if not is_placeholder and end_dt:
+                has_active = trabajador_info.get('has_active', False) if trabajador_info else False
+                active_record = trabajador_info.get('active_record') if trabajador_info else None
+                if has_active and active_record:
+                    return {
+                        'tipo': 'B',
+                        'coditraba': str(active_record.get('coditraba', '0')),
+                        'active_record': active_record,
+                        'status': 'ok'
+                    }
+                return {'status': 'skipped', 'reason': 'no_active_for_baja'}
         
         if trabajador_info is None:
             # CASO 1: Trabajador NO existe

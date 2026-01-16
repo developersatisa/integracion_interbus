@@ -114,7 +114,7 @@ class SyncEmployeeModificationsUseCase:
         created_date: datetime
     ) -> Dict[str, Any]:
         """
-        Identifica si el registro es ALTA o MODIFICACIÓN.
+        Identifica si el registro es ALTA, BAJA o MODIFICACIÓN.
         
         Args:
             record: Registro del endpoint EmployeeModifications
@@ -143,6 +143,25 @@ class SyncEmployeeModificationsUseCase:
         trabajador_info = self.e03800_adapter.find_trabajador(
             codiemp, nombre, apellido1, apellido2 or ''
         )
+
+        # BAJA rápida: EndDate != placeholder y trabajador activo
+        end_date_str = record.get('EndDate')
+        if end_date_str:
+            try:
+                end_dt = datetime.fromisoformat(str(end_date_str).replace('Z', '+00:00'))
+                if end_dt != datetime(2154, 12, 31, 23, 59, 59):
+                    has_active = trabajador_info.get('has_active', False) if trabajador_info else False
+                    active_record = trabajador_info.get('active_record') if trabajador_info else None
+                    if has_active and active_record:
+                        return {
+                            'tipo': 'B',
+                            'coditraba': str(active_record.get('coditraba', '0')),
+                            'active_record': active_record,
+                            'status': 'ok'
+                        }
+                    return {'status': 'skipped', 'reason': 'no_active_for_baja'}
+            except (ValueError, TypeError):
+                pass
         
         if trabajador_info is None:
             # CASO 1: Trabajador NO existe

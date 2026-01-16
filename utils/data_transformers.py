@@ -348,20 +348,42 @@ def map_employee_to_com_altas(
     # Procesar teléfono móvil con lógica similar al teléfono
     telmovil_endpoint = normalize_null_or_empty(record.get('Mobilephone'))
     telmovil_final = None
+    max_int = 2147483647
 
     if telmovil_endpoint:
         if is_numeric_string(str(telmovil_endpoint)):
-            telmovil_final = telmovil_endpoint
+            telmovil_str = str(telmovil_endpoint).strip()
+            if len(telmovil_str) <= 13:
+                try:
+                    telmovil_int = int(telmovil_str)
+                    if telmovil_int <= max_int:
+                        telmovil_final = str(telmovil_int)
+                except ValueError:
+                    telmovil_final = None
         else:
             if active_record and tipo == 'M':
                 telmovil_trabajador = active_record.get('telmovil')
                 if telmovil_trabajador and is_numeric_string(str(telmovil_trabajador)):
-                    telmovil_final = telmovil_trabajador
+                    telmovil_str = str(telmovil_trabajador).strip()
+                    if len(telmovil_str) <= 13:
+                        try:
+                            telmovil_int = int(telmovil_str)
+                            if telmovil_int <= max_int:
+                                telmovil_final = str(telmovil_int)
+                        except ValueError:
+                            telmovil_final = None
     else:
         if active_record and tipo == 'M':
             telmovil_trabajador = active_record.get('telmovil')
             if telmovil_trabajador and is_numeric_string(str(telmovil_trabajador)):
-                telmovil_final = telmovil_trabajador
+                telmovil_str = str(telmovil_trabajador).strip()
+                if len(telmovil_str) <= 13:
+                    try:
+                        telmovil_int = int(telmovil_str)
+                        if telmovil_int <= max_int:
+                            telmovil_final = str(telmovil_int)
+                    except ValueError:
+                        telmovil_final = None
 
     # Procesar naf (NASS) con lógica especial (igual que telefono)
     nass_endpoint = normalize_null_or_empty(record.get('NASS'))
@@ -396,8 +418,17 @@ def map_employee_to_com_altas(
             salario_final = convert_string_to_decimal(str(salario_endpoint))
         # Si no es numérico, queda None
     
+    codiemp = normalize_null_or_empty(record.get('CompanyIdATISA'))
+    ccc_value = normalize_null_or_empty(record.get('BankAccount'))
+    ccc_endpoint = normalize_null_or_empty(record.get('CCC'))
+    codidepa_value = None
+    if codiemp and ccc_endpoint:
+        codidepa_value = f"{codiemp}-{ccc_endpoint}"
+        if len(codidepa_value) > 30:
+            codidepa_value = codidepa_value[:30]
+
     return {
-        'codiemp': normalize_null_or_empty(record.get('CompanyIdATISA')),
+        'codiemp': codiemp,
         'codicen': '001',
         'nombre': normalize_null_or_empty(record.get('FirstName')),
         'apellido1': normalize_null_or_empty(record.get('LastName1')),
@@ -412,7 +443,8 @@ def map_employee_to_com_altas(
         'cpostal': normalize_null_or_empty(record.get('ZipCode')),
         'fechaalta': extract_date_from_datetime(record.get('StartDate', '')),
         'salario': salario_final,
-        'ccc': normalize_null_or_empty(record.get('BankAccount')),
+        'ccc': ccc_value,
+        'codidepa': codidepa_value,
         'nummat': normalize_null_or_empty(record.get('PersonnelNumber')),
         'grupo_vacaciones': convert_string_to_int(record.get('HolidaysAbsencesGroupATISAId', '')),
         'grupo_biblioteca': convert_string_to_int(record.get('LibrariesGroupATISAId', '')),

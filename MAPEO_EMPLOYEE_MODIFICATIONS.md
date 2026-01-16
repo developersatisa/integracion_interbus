@@ -66,13 +66,13 @@ CREATE TABLE IF NOT EXISTS `dfo_com_altas` (
 | `DisabilityPercentage` | number | - | - | ❌ | No se integra de momento |
 | `Department` | string | - | - | ❌ | No se integra de momento |   
 | `TestingPeriodId` | string | - | - | ❌ | No se integra de momento |
-| `CCC` | string | - | - | ❌ | No se integra de momento |   //codigo cuenta cotizacion
+| `CCC` | string | `codidepa` | char(30) | ✅ | Se guarda como `CompanyIdATISA-CCC` |
 | `Observations` | string | - | - | ❌ | No se integra de momento |
 | `SubPosition` | string | `subpuesto` | varchar(120) | ✅ | Lookup en `lista_subpuestos` (com_altas guarda `codpuesto`) |
 | `IncidentGroupATISAId` | string | - | - | ❌ | No se integra de momento |
 | `County` | string | `provincia` | char(30) | ✅ | Si llega como ID numerico, se resuelve en `provincias_integracion.descripcion` |
 | `LeaveGroupATISAId` | string | - | - | ❌ | No se integra de momento |
-| `NationalityCountryRegion` | string/null | `nacionalidad` | int(10) | ✅ | Se busca en `acceso.paises` (pais -> codpais) |
+| `NationalityCountryRegion` | string/null | `nacionalidad` | int(10) | ✅ | Se busca en `acceso.paises` (cca3 -> codpais) |
 | `City` | string | `localidad` | char(30) | ✅ | Ciudad |
 | `VacationCalenderId` | string | - | - | ❌ | No se integra de momento |  
 | `Reasonforcontract` | string | `motivo_contrato` | text | ✅ | Motivo de contrato |

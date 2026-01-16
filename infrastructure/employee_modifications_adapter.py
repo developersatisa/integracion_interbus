@@ -471,16 +471,10 @@ class EmployeeModificationsAdapter:
             connection = self._get_connection_acceso()
             cursor = connection.cursor()
             cursor.execute(
-                "SELECT codpais FROM paises WHERE pais = %s LIMIT 1",
+                "SELECT codpais FROM paises WHERE cca3 = %s LIMIT 1",
                 (value_str,)
             )
             row = cursor.fetchone()
-            if not row and len(value_str) == 3:
-                cursor.execute(
-                    "SELECT codpais FROM paises WHERE LEFT(pais, 3) = %s LIMIT 1",
-                    (value_str,)
-                )
-                row = cursor.fetchone()
             if row:
                 return row[0]
         except Error as e:

@@ -252,6 +252,33 @@ def normalize_text_max(value: Optional[Any], max_length: int = 65535) -> Optiona
     return value_str[:max_length]
 
 
+def normalize_bank_account(value: Optional[Any]) -> Optional[str]:
+    """
+    Normaliza cuenta bancaria (IBAN ES) a formato con barras.
+    """
+    value_str = normalize_string(value)
+    if not value_str:
+        return None
+
+    # Si ya viene con barras, devolverlo limpio
+    if '/' in value_str:
+        return value_str.strip()
+
+    compact = ''.join(ch for ch in value_str if ch.isalnum())
+    if len(compact) >= 4 and compact[:2].isalpha():
+        country = compact[:2].upper()
+        if country == 'ES' and len(compact) >= 24:
+            iban = compact[:24]
+            check = iban[2:4]
+            bank = iban[4:8]
+            branch = iban[8:12]
+            control = iban[12:14]
+            account = iban[14:24]
+            return f"/{country}{check}/{bank}/{branch}/{control}/{account}"
+
+    return compact
+
+
 def extract_ccc_from_codidepa(value: Optional[Any]) -> Optional[str]:
     """
     Extrae el CCC desde codidepa (formato esperado: codiemp-ccc).
@@ -543,7 +570,7 @@ def map_employee_to_com_altas(
         education_level_raw = record.get('educationlevel')
     if education_level_raw is None:
         education_level_raw = record.get('LevelEducation')
-    ccc_value = normalize_null_or_empty(record.get('BankAccount'))
+    ccc_value = normalize_bank_account(record.get('BankAccount'))
     ccc_endpoint = normalize_null_or_empty(record.get('CCC'))
     codidepa_value = None
     if codiemp and ccc_endpoint:

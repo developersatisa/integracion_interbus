@@ -431,7 +431,7 @@ class BidirectionalSyncUseCase:
                         "dataAreaId": "itb",
                         "EQMWorkerPlaceID": item_id,
                         "Description": item_nombre,
-                        "CompanyIdAtisa": str(e03800_item.get('codiemp') or '').strip()
+                        "CompanyIdATISA": str(e03800_item.get('codiemp') or '').strip()
                     }
                 elif entity_name == 'ContributionAccountCodeCCs':
                     # ContributionAccountCodeCCs: requiere EQMCCC, EQMWorkerPlaceID y VATNum (CIF)

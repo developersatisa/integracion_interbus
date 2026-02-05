@@ -48,7 +48,7 @@ def main():
         "dataAreaId": "itb",
         "EQMWorkerPlaceID": worker_place_id,
         "Description": description,
-        "CompanyIdAtisa": codigop
+        "CompanyIdATISA": codigop
     }
 
     token_service = AzureADTokenService()

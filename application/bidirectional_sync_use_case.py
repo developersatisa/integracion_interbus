@@ -274,8 +274,14 @@ class BidirectionalSyncUseCase:
                     # Para empresas, comparar nombre y CIF (VATNum)
                     e03800_cif = str(e03800_item.get('cif') or '').strip()
                     dynamics_cif = str(dynamics_record.get('VATNum') or '').strip()
+                    e03800_quotation = str(e03800_item.get('quotation_account') or '').strip()
+                    dynamics_quotation = str(dynamics_record.get('QuotationAccount') or '').strip()
                     
-                    if dynamics_description == e03800_nombre and dynamics_cif == e03800_cif:
+                    if (
+                        dynamics_description == e03800_nombre
+                        and dynamics_cif == e03800_cif
+                        and dynamics_quotation == e03800_quotation
+                    ):
                         # Sin cambios
                         actions_taken["unchanged"].append(data_area_id)
                     else:
@@ -417,13 +423,15 @@ class BidirectionalSyncUseCase:
                         "dataAreaId": "itb",
                         "EQMCompanyIdATISA": item_id,
                         "Description": item_nombre,
-                        "VATNum": str(e03800_item.get('cif') or '').strip()
+                        "VATNum": str(e03800_item.get('cif') or '').strip(),
+                        "QuotationAccount": str(e03800_item.get('quotation_account') or '').strip()
                     }
                 elif entity_name == 'WorkerPlaces':
                     data_to_create = {
                         "dataAreaId": "itb",
                         "EQMWorkerPlaceID": item_id,
-                        "Description": item_nombre
+                        "Description": item_nombre,
+                        "CompanyIdAtisa": str(e03800_item.get('codiemp') or '').strip()
                     }
                 elif entity_name == 'ContributionAccountCodeCCs':
                     # ContributionAccountCodeCCs: requiere EQMCCC, EQMWorkerPlaceID y VATNum (CIF)
@@ -598,6 +606,7 @@ class BidirectionalSyncUseCase:
         # Si es CompanyATISAs, incluir también el CIF (VATNum)
         if entity_name == 'CompanyATISAs' and e03800_item:
             update_data["VATNum"] = str(e03800_item.get('cif') or '').strip()
+            update_data["QuotationAccount"] = str(e03800_item.get('quotation_account') or '').strip()
         
         self._dynamics_api.update_entity_data(
             entity_name=entity_name,

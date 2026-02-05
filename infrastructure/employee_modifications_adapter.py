@@ -23,7 +23,6 @@ class EmployeeModificationsAdapter:
         self._database_e03800 = "e03800"
         self._database_acceso = "acceso"
         self._trabajadores_nif_column = None
-        self._dfo_com_altas_processed_column = None
         self._provincias_integracion_db = None
         self._puestos_tables = {"lista_puestos", "lista_subpuestos"}
 
@@ -88,7 +87,7 @@ class EmployeeModificationsAdapter:
     
     def etag_exists(self, etag_encoded: str) -> bool:
         """
-        Verifica si el ETag ya existe en dfo_com_altas.
+        Verifica si el ETag ya existe en dfo_com_altas y no está procesado.
         
         Args:
             etag_encoded: ETag codificado en base64
@@ -103,7 +102,12 @@ class EmployeeModificationsAdapter:
             connection = self._get_connection_interbus_365()
             cursor = connection.cursor()
             
-            query = "SELECT COUNT(*) FROM dfo_com_altas WHERE etag = %s"
+            query = """
+                SELECT COUNT(*)
+                FROM dfo_com_altas
+                WHERE etag = %s
+                  AND procesado = 0
+            """
             cursor.execute(query, (etag_encoded,))
             count = cursor.fetchone()[0]
             
@@ -295,6 +299,7 @@ class EmployeeModificationsAdapter:
                 SELECT
                     id,
                     codiemp,
+                    codicen,
                     nombre,
                     apellido1,
                     apellido2,
@@ -303,23 +308,42 @@ class EmployeeModificationsAdapter:
                     fechanacimiento,
                     email,
                     telefono,
+                    telmovil,
                     cpostal,
                     fechaalta,
                     salario,
                     ccc,
+                    codidepa,
                     nummat,
                     grupo_vacaciones,
                     grupo_biblioteca,
                     grupo_anticipos,
+                    grupo_incidencias,
+                    grupo_bajas,
                     domicilio,
                     localidad,
                     provincia,
+                    nacionalidad,
+                    titulacion,
+                    puesto,
+                    subpuesto,
                     categoria_puesto,
                     tipo_contrato,
                     fecha_antig,
                     fechafincontrato,
                     motivo_contrato,
-                    nif
+                    horas_semana,
+                    grupo_cotizacion,
+                    calendario,
+                    vac_pendientes,
+                    grupo_altas,
+                    observaciones_modcon,
+                    observa,
+                    observa_admin,
+                    nif,
+                    estado,
+                    tipo,
+                    observa_atisa
                 FROM com_altas
                 WHERE id = %s
             """
@@ -335,39 +359,68 @@ class EmployeeModificationsAdapter:
             if connection:
                 connection.close()
 
-    def _resolve_dfo_com_altas_processed_column(self, cursor) -> str:
+    def mark_pending_altas_denegadas(
+        self,
+        codiemp: Optional[str],
+        nass: Optional[str],
+        nif: Optional[str],
+        exclude_id: Optional[int] = None
+    ) -> int:
         """
-        Resuelve el nombre de columna de procesado en dfo_com_altas.
-        Prioriza 'procesado' y cae a 'processed' si existe.
+        Marca como denegadas (estado = 'D') las altas pendientes de la misma persona.
         """
-        if self._dfo_com_altas_processed_column:
-            return self._dfo_com_altas_processed_column
+        if not codiemp:
+            return 0
 
-        cursor.execute(
-            """
-            SELECT COLUMN_NAME
-            FROM information_schema.columns
-            WHERE table_schema = %s
-              AND table_name = 'dfo_com_altas'
-              AND column_name IN ('procesado', 'processed')
-            """,
-            (self._database_interbus,)
-        )
-        columns = set()
-        for row in cursor.fetchall():
-            if isinstance(row, dict):
-                columns.add(row.get('COLUMN_NAME'))
-            else:
-                columns.add(row[0])
+        match_parts = []
+        params = [codiemp]
 
-        if 'procesado' in columns:
-            self._dfo_com_altas_processed_column = 'procesado'
-        elif 'processed' in columns:
-            self._dfo_com_altas_processed_column = 'processed'
-        else:
-            self._dfo_com_altas_processed_column = 'procesado'
+        if nass:
+            match_parts.append("naf = %s")
+            params.append(str(nass).strip())
+        if nif:
+            match_parts.append("nif = %s")
+            params.append(str(nif).strip())
 
-        return self._dfo_com_altas_processed_column
+        if not match_parts:
+            return 0
+
+        where_parts = [
+            "codiemp = %s",
+            "tipo = 'A'",
+            "estado IS DISTINCT FROM 'D'",
+            "(estado IS NULL OR estado = '' OR estado != 'L')",
+            f"({' OR '.join(match_parts)})"
+        ]
+
+        if exclude_id is not None:
+            where_parts.append("id != %s")
+            params.append(exclude_id)
+
+        query = f"""
+            UPDATE com_altas
+            SET estado = 'D'
+            WHERE {' AND '.join(where_parts)}
+        """
+
+        connection = None
+        cursor = None
+        try:
+            connection = self._get_connection_e03800()
+            cursor = connection.cursor()
+            cursor.execute(query, params)
+            connection.commit()
+            return cursor.rowcount
+        except Error as e:
+            if connection:
+                connection.rollback()
+            logger.error(f"Error marcando altas denegadas: {e}")
+            raise
+        finally:
+            if cursor:
+                cursor.close()
+            if connection:
+                connection.close()
 
     def _resolve_provincias_integracion_db(self) -> str:
         """
@@ -454,6 +507,49 @@ class EmployeeModificationsAdapter:
 
         return value_str
 
+    def resolve_provincia_id(self, provincia_value: Optional[Any]) -> Optional[Any]:
+        """
+        Resuelve provincia por descripción usando provincias_integracion.
+        """
+        if provincia_value is None:
+            return None
+
+        value_str = str(provincia_value).strip()
+        if not value_str:
+            return None
+
+        if value_str.isdigit():
+            return value_str
+
+        db_name = self._resolve_provincias_integracion_db()
+        if not db_name:
+            return value_str
+
+        connection = None
+        cursor = None
+        try:
+            if db_name == self._database_e03800:
+                connection = self._get_connection_e03800()
+            else:
+                connection = self._get_connection_interbus_365()
+            cursor = connection.cursor()
+            cursor.execute(
+                "SELECT id FROM provincias_integracion WHERE descripcion = %s LIMIT 1",
+                (value_str,)
+            )
+            row = cursor.fetchone()
+            if row:
+                return row[0]
+        except Error as e:
+            logger.warning(f"Error resolviendo provincia (id) {value_str}: {e}")
+        finally:
+            if cursor:
+                cursor.close()
+            if connection:
+                connection.close()
+
+        return value_str
+
     def resolve_nacionalidad_codigo(self, nacionalidad_value: Optional[Any]) -> Optional[Any]:
         """
         Resuelve nacionalidad usando acceso.paises (pais -> codpais).
@@ -479,6 +575,42 @@ class EmployeeModificationsAdapter:
                 return row[0]
         except Error as e:
             logger.warning(f"Error resolviendo nacionalidad {value_str}: {e}")
+        finally:
+            if cursor:
+                cursor.close()
+            if connection:
+                connection.close()
+
+        return value_str
+
+    def resolve_nacionalidad_cca3(self, nacionalidad_value: Optional[Any]) -> Optional[Any]:
+        """
+        Resuelve nacionalidad usando acceso.paises (codpais -> cca3).
+        """
+        if nacionalidad_value is None:
+            return None
+
+        value_str = str(nacionalidad_value).strip()
+        if not value_str:
+            return None
+
+        if not value_str.isdigit():
+            return value_str
+
+        connection = None
+        cursor = None
+        try:
+            connection = self._get_connection_acceso()
+            cursor = connection.cursor()
+            cursor.execute(
+                "SELECT cca3 FROM paises WHERE codpais = %s LIMIT 1",
+                (value_str,)
+            )
+            row = cursor.fetchone()
+            if row:
+                return row[0]
+        except Error as e:
+            logger.warning(f"Error resolviendo nacionalidad (cca3) {value_str}: {e}")
         finally:
             if cursor:
                 cursor.close()
@@ -618,7 +750,6 @@ class EmployeeModificationsAdapter:
         try:
             connection = self._get_connection_interbus_365()
             cursor = connection.cursor(dictionary=True)
-            processed_column = self._resolve_dfo_com_altas_processed_column(cursor)
 
             query = f"""
                 SELECT
@@ -626,7 +757,7 @@ class EmployeeModificationsAdapter:
                     etag,
                     personnel_number,
                     created_date,
-                    {processed_column} AS procesado
+                    procesado
                 FROM dfo_com_altas
                 WHERE id = %s
             """
@@ -652,9 +783,8 @@ class EmployeeModificationsAdapter:
         try:
             connection = self._get_connection_interbus_365()
             cursor = connection.cursor()
-            processed_column = self._resolve_dfo_com_altas_processed_column(cursor)
 
-            query = f"UPDATE dfo_com_altas SET {processed_column} = %s WHERE id = %s"
+            query = "UPDATE dfo_com_altas SET procesado = %s WHERE id = %s"
             cursor.execute(query, (processed, com_altas_id))
             connection.commit()
             return cursor.rowcount > 0
@@ -963,7 +1093,6 @@ class EmployeeModificationsAdapter:
             nif_column = self._resolve_trabajadores_nif_column(cursor)
             interbus_connection = self._get_connection_interbus_365()
             interbus_cursor = interbus_connection.cursor(dictionary=True)
-            processed_column = self._resolve_dfo_com_altas_processed_column(interbus_cursor)
 
             for record in records:
                 com_altas_id = record.get('id')
@@ -972,7 +1101,7 @@ class EmployeeModificationsAdapter:
                     continue
 
                 interbus_cursor.execute(
-                    f"SELECT {processed_column} AS procesado FROM dfo_com_altas WHERE id = %s",
+                    "SELECT procesado FROM dfo_com_altas WHERE id = %s",
                     (com_altas_id,)
                 )
                 dfo_row = interbus_cursor.fetchone()

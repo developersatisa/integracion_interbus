@@ -184,9 +184,19 @@ class E03800DatabaseAdapter:
             cursor = connection.cursor(dictionary=True)
             
             query = """
-                SELECT codiemp, nombre, cif
-                FROM empresas
-                ORDER BY codiemp
+                SELECT
+                    e.codiemp,
+                    e.nombre,
+                    e.cif,
+                    c.ccc
+                FROM empresas e
+                LEFT JOIN (
+                    SELECT codiemp, MAX(ccc) AS ccc
+                    FROM ccc
+                    WHERE tipo = 'Principal'
+                    GROUP BY codiemp
+                ) c ON c.codiemp = e.codiemp
+                ORDER BY e.codiemp
             """
             
             cursor.execute(query)
@@ -198,7 +208,8 @@ class E03800DatabaseAdapter:
                 empresas.append({
                     'id': str(row['codiemp']),
                     'nombre': row['nombre'],
-                    'cif': str(row.get('cif') or '').strip()
+                    'cif': str(row.get('cif') or '').strip(),
+                    'quotation_account': str(row.get('ccc') or '').strip()
                 })
             
             logger.info(f"Obtenidos {len(empresas)} registros de empresas")
@@ -335,7 +346,8 @@ class E03800DatabaseAdapter:
                     
                     worker_places.append({
                         'id': worker_place_id,
-                        'nombre': description
+                        'nombre': description,
+                        'codiemp': codigop
                     })
                     
                 except Exception as e:
@@ -648,6 +660,50 @@ class E03800DatabaseAdapter:
                 cursor.close()
             if connection:
                 connection.close()
+
+    def _fetch_trabajador_records(
+        self,
+        connection,
+        where_clause: str,
+        params: tuple
+    ) -> List[Dict[str, Any]]:
+        cursor = connection.cursor(dictionary=True)
+        try:
+            nif_column = self._resolve_trabajadores_nif_column(connection)
+            query = f"""
+                SELECT coditraba, fechaalta, fechabaja, telefono, numeross, {nif_column} AS nif
+                FROM trabajadores
+                WHERE {where_clause}
+                ORDER BY fechaalta DESC
+            """
+            cursor.execute(query, params)
+            return cursor.fetchall()
+        finally:
+            cursor.close()
+
+    def _build_trabajador_info(
+        self,
+        records: List[Dict[str, Any]]
+    ) -> Optional[Dict[str, Any]]:
+        if not records:
+            return None
+
+        active_record = None
+        has_active = False
+
+        for record in records:
+            fechabaja = record.get('fechabaja')
+            if fechabaja is None or fechabaja == '':
+                has_active = True
+                if active_record is None:
+                    active_record = record
+
+        return {
+            'exists': True,
+            'has_active': has_active,
+            'active_record': active_record,
+            'all_records': records
+        }
     
     def find_trabajador(self, codiemp: str, nombre: str, apellido1: str, apellido2: str) -> Optional[Dict[str, Any]]:
         """
@@ -670,58 +726,65 @@ class E03800DatabaseAdapter:
                 - 'all_records': List[Dict] con TODOS los registros del trabajador
         """
         connection = None
-        cursor = None
         
         try:
             connection = self._get_connection()
-            cursor = connection.cursor(dictionary=True)
-            
-            nif_column = self._resolve_trabajadores_nif_column(connection)
-
-            # Obtener TODOS los registros del trabajador (no solo uno)
-            # Incluir telefono, numeross y NIF/DNI para poder usarlos en MODIFICACIONES
-            query = f"""
-                SELECT coditraba, fechaalta, fechabaja, telefono, numeross, {nif_column} AS nif
-                FROM trabajadores
-                WHERE codiemp = %s
-                  AND nombre = %s
-                  AND apellido1 = %s
-                  AND apellido2 = %s
-                ORDER BY fechaalta DESC
-            """
-            cursor.execute(query, (codiemp, nombre, apellido1, apellido2))
-            all_records = cursor.fetchall()
-            
-            if not all_records:
-                return None
-            
-            # Iterar por TODOS los registros para encontrar si hay alguno activo
-            active_record = None
-            has_active = False
-            
-            for record in all_records:
-                fechabaja = record.get('fechabaja')
-                # Verificar si está activo (fechabaja = NULL o vacío)
-                if fechabaja is None or fechabaja == '':
-                    has_active = True
-                    # Tomar el primer registro activo encontrado (puede haber varios)
-                    if active_record is None:
-                        active_record = record
-                    # No hacer break porque queremos evaluar todos, pero solo guardamos el primero activo
-            
-            return {
-                'exists': True,
-                'has_active': has_active,
-                'active_record': active_record,  # Puede ser None si todos están dados de baja
-                'all_records': all_records  # Lista completa de todos los registros
-            }
+            records = self._fetch_trabajador_records(
+                connection,
+                "codiemp = %s AND nombre = %s AND apellido1 = %s AND apellido2 = %s",
+                (codiemp, nombre, apellido1, apellido2)
+            )
+            return self._build_trabajador_info(records)
             
         except Error as e:
             logger.error(f"Error buscando trabajador: {e}")
             raise
         finally:
-            if cursor:
-                cursor.close()
+            if connection:
+                connection.close()
+
+    def find_trabajador_by_nass(self, codiemp: str, nass: str) -> Optional[Dict[str, Any]]:
+        """
+        Busca un trabajador por NASS (numeross) dentro de una empresa.
+        """
+        connection = None
+
+        try:
+            connection = self._get_connection()
+            records = self._fetch_trabajador_records(
+                connection,
+                "codiemp = %s AND numeross = %s",
+                (codiemp, nass)
+            )
+            return self._build_trabajador_info(records)
+
+        except Error as e:
+            logger.error(f"Error buscando trabajador por NASS: {e}")
+            raise
+        finally:
+            if connection:
+                connection.close()
+
+    def find_trabajador_by_nif(self, codiemp: str, nif: str) -> Optional[Dict[str, Any]]:
+        """
+        Busca un trabajador por NIF/DNI dentro de una empresa.
+        """
+        connection = None
+
+        try:
+            connection = self._get_connection()
+            nif_column = self._resolve_trabajadores_nif_column(connection)
+            records = self._fetch_trabajador_records(
+                connection,
+                f"codiemp = %s AND {nif_column} = %s",
+                (codiemp, nif)
+            )
+            return self._build_trabajador_info(records)
+
+        except Error as e:
+            logger.error(f"Error buscando trabajador por NIF: {e}")
+            raise
+        finally:
             if connection:
                 connection.close()
     
@@ -784,6 +847,71 @@ class E03800DatabaseAdapter:
             
         except Error as e:
             logger.error(f"Error obteniendo última fecha de baja: {e}")
+            raise
+        finally:
+            if cursor:
+                cursor.close()
+            if connection:
+                connection.close()
+
+    def get_last_fechabaja_by_nass(self, codiemp: str, nass: str) -> Optional[str]:
+        """
+        Obtiene la última fecha de baja de un trabajador filtrando por NASS (numeross).
+        """
+        connection = None
+        cursor = None
+
+        try:
+            connection = self._get_connection()
+            cursor = connection.cursor(dictionary=True)
+            query = """
+                SELECT fechabaja
+                FROM trabajadores
+                WHERE codiemp = %s
+                  AND numeross = %s
+                  AND fechabaja IS NOT NULL
+                  AND fechabaja != ''
+                ORDER BY fechabaja DESC
+                LIMIT 1
+            """
+            cursor.execute(query, (codiemp, nass))
+            row = cursor.fetchone()
+            return row.get('fechabaja') if row else None
+        except Error as e:
+            logger.error(f"Error obteniendo última fechabaja por NASS: {e}")
+            raise
+        finally:
+            if cursor:
+                cursor.close()
+            if connection:
+                connection.close()
+
+    def get_last_fechabaja_by_nif(self, codiemp: str, nif: str) -> Optional[str]:
+        """
+        Obtiene la última fecha de baja de un trabajador filtrando por NIF/DNI.
+        """
+        connection = None
+        cursor = None
+
+        try:
+            connection = self._get_connection()
+            cursor = connection.cursor(dictionary=True)
+            nif_column = self._resolve_trabajadores_nif_column(connection)
+            query = f"""
+                SELECT fechabaja
+                FROM trabajadores
+                WHERE codiemp = %s
+                  AND {nif_column} = %s
+                  AND fechabaja IS NOT NULL
+                  AND fechabaja != ''
+                ORDER BY fechabaja DESC
+                LIMIT 1
+            """
+            cursor.execute(query, (codiemp, nif))
+            row = cursor.fetchone()
+            return row.get('fechabaja') if row else None
+        except Error as e:
+            logger.error(f"Error obteniendo última fechabaja por NIF: {e}")
             raise
         finally:
             if cursor:

@@ -134,6 +134,7 @@ class SyncEmployeeModificationsUseCase:
         apellido2 = normalize_null_or_empty(record.get('LastName2'))
         vatnum = normalize_null_or_empty(record.get('VATNum'))
         vatnum_normalized = str(vatnum).strip().upper() if vatnum else None
+        nass = normalize_null_or_empty(record.get('NASS'))
 
         if not all([codiemp, nombre, apellido1, vatnum_normalized]):
             logger.warning("Faltan campos de identificación del trabajador")
@@ -143,8 +144,16 @@ class SyncEmployeeModificationsUseCase:
         trabajador_info = self.e03800_adapter.find_trabajador(
             codiemp, nombre, apellido1, apellido2 or ''
         )
+        if trabajador_info is None and nass:
+            trabajador_info = self.e03800_adapter.find_trabajador_by_nass(
+                codiemp, str(nass).strip()
+            )
+        if trabajador_info is None and vatnum_normalized:
+            trabajador_info = self.e03800_adapter.find_trabajador_by_nif(
+                codiemp, vatnum_normalized
+            )
 
-        # BAJA rápida: EndDate != placeholder y trabajador activo
+        # BAJA rápida: EndDate != placeholder y trabajador existe
         end_date_str = record.get('EndDate')
         if end_date_str:
             end_date_value = str(end_date_str)
@@ -163,17 +172,19 @@ class SyncEmployeeModificationsUseCase:
             except (ValueError, TypeError):
                 end_dt = None
 
-            if not is_placeholder and end_dt:
-                has_active = trabajador_info.get('has_active', False) if trabajador_info else False
-                active_record = trabajador_info.get('active_record') if trabajador_info else None
-                if has_active and active_record:
+            if not is_placeholder and end_dt and trabajador_info:
+                active_record = trabajador_info.get('active_record')
+                if active_record is None:
+                    records = trabajador_info.get('all_records') or []
+                    if records:
+                        active_record = records[0]
+                if active_record:
                     return {
                         'tipo': 'B',
                         'coditraba': str(active_record.get('coditraba', '0')),
                         'active_record': active_record,
                         'status': 'ok'
                     }
-                return {'status': 'skipped', 'reason': 'no_active_for_baja'}
         
         if trabajador_info is None:
             # CASO 1: Trabajador NO existe
@@ -221,9 +232,18 @@ class SyncEmployeeModificationsUseCase:
                 }
         else:
             # CASO 2.B: NO hay trabajador ACTIVO (todos los registros tienen fechabaja)
-            ultima_fechabaja = self.e03800_adapter.get_last_fechabaja(
-                codiemp, nombre, apellido1, apellido2 or ''
-            )
+            if nass:
+                ultima_fechabaja = self.e03800_adapter.get_last_fechabaja_by_nass(
+                    codiemp, str(nass).strip()
+                )
+            elif vatnum_normalized:
+                ultima_fechabaja = self.e03800_adapter.get_last_fechabaja_by_nif(
+                    codiemp, vatnum_normalized
+                )
+            else:
+                ultima_fechabaja = self.e03800_adapter.get_last_fechabaja(
+                    codiemp, nombre, apellido1, apellido2 or ''
+                )
             
             if ultima_fechabaja:
                 # Convertir fechas para comparar
@@ -441,6 +461,19 @@ class SyncEmployeeModificationsUseCase:
             # PASO 6: Crear registros
             # 6.1: Insertar en com_altas
             com_altas_id = self.employee_adapter.insert_com_altas(mapped_data)
+
+            # 6.1.1: Si es ALTA, denegar otras altas pendientes del mismo trabajador
+            if tipo == 'A':
+                nass = normalize_null_or_empty(record.get('NASS'))
+                nif = normalize_null_or_empty(record.get('VATNum'))
+                updated = self.employee_adapter.mark_pending_altas_denegadas(
+                    codiemp,
+                    nass,
+                    nif,
+                    exclude_id=com_altas_id
+                )
+                if updated:
+                    logger.info(f"Altas pendientes denegadas: {updated}")
 
             # 6.2: Insertar en dfo_com_altas
             personnel_number = normalize_null_or_empty(record.get('PersonnelNumber'))

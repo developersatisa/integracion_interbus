@@ -9,6 +9,32 @@ import logging
 
 logger = logging.getLogger(__name__)
 
+EDUCATION_LEVEL_CODE_BY_KEY = {
+    "EDUCATIONFORTRAININGANDLABORINSERTIONREQUIREHIGHER": "53",
+    "TRAININGANDLABORINSERTIONPROGRAMS": "21",
+    "UNIVERSITYOWNEDDEGREESANDOTHERCOURSESREQUIREBACCALAUREATE": "52",
+    "TRAININGANDLABORINSERTIONPROGRAMSREQUIREFIRSTSTAGESECONDARY": "31",
+    "INCOMPLETEPRIMARYSTUDIES": "11",
+    "UNIVERSITYDOCTORATE": "61",
+    "TRAININGANDJOBPLACEMENT": "58",
+    "HIGHERLEVELCOURSESFORSPECIFICANDEQUIVALENTVOCATIONAL": "51",
+    "POSTGRADUATEEDUCATION": "57",
+    "FIRSTSTAGESECONDARYEDUCATIONWITHHIGHSCHOOL": "23",
+    "UNIVERSITYMASTERSDEGREES": "60",
+    "COMPLETEPRIMARYSTUDIES": "12",
+    "INTERMEDIATELEELCOURSESFORSPECIFICVOCATIONALTRAINING": "33",
+    "INTERMEDIATELEVELCOURSESFORSPECIFICVOCATIONALTRAINING": "33",
+    "SECONDCYCLEUNIVERSITYEDUCATION": "55",
+    "NOTDEFINED": "00",
+    "UNIVERSITYUNDERGRADUATEDEGREES": "59",
+    "FIRSTSTAGESECONDARYEDUCATIONWITHOUTHIGHSCHOOL": "22",
+    "BACCALAUREATECOURSES": "32",
+    "FIRSTCYCLEUNIVERSITYEDUCATION": "54",
+    "OFFICIALPROFESSIONALSPECIALIZATIONSTUDIES": "56",
+    "COURSESFORTRAININGANDLABORINSERTIONTHATREQUIREA2": "41",
+    "WITHOUTSTUDIES": "80",
+}
+
 
 def convert_string_to_int(value: str) -> Optional[int]:
     """
@@ -200,6 +226,62 @@ def normalize_string(value: Any) -> Optional[str]:
     return value_str if value_str else None
 
 
+def normalize_postal_code(value: Optional[Any], max_length: int = 5) -> Optional[str]:
+    """
+    Normaliza el código postal a longitud máxima.
+    """
+    value_str = normalize_string(value)
+    if not value_str:
+        return None
+    digits_only = ''.join(ch for ch in value_str if ch.isdigit())
+    if digits_only:
+        return digits_only[:max_length]
+    return value_str[:max_length]
+
+
+def normalize_text_max(value: Optional[Any], max_length: int = 65535) -> Optional[str]:
+    """
+    Normaliza un texto a longitud máxima.
+    """
+    value_str = normalize_string(value)
+    if not value_str:
+        return None
+    if len(value_str) <= max_length:
+        return value_str
+    logger.warning(f"Texto truncado a {max_length} caracteres")
+    return value_str[:max_length]
+
+
+def extract_ccc_from_codidepa(value: Optional[Any]) -> Optional[str]:
+    """
+    Extrae el CCC desde codidepa (formato esperado: codiemp-ccc).
+    """
+    value_str = normalize_string(value)
+    if not value_str:
+        return None
+    if '-' in value_str:
+        _, suffix = value_str.split('-', 1)
+        return suffix or None
+    return value_str
+
+
+def normalize_education_level_code(value: Optional[Any]) -> Optional[str]:
+    """
+    Normaliza el nivel educativo: si llega en inglés, lo traduce al código numérico.
+    """
+    value_str = normalize_string(value)
+    if not value_str:
+        return None
+    if value_str.isdigit():
+        return value_str.zfill(2)
+    key = ''.join(char for char in value_str.upper() if char.isalnum())
+    mapped = EDUCATION_LEVEL_CODE_BY_KEY.get(key)
+    if mapped is not None:
+        return mapped
+    logger.warning(f"Nivel educativo no reconocido: {value_str}")
+    return None
+
+
 def format_date_for_dynamics(value: Any) -> Optional[str]:
     """
     Convierte fechas a formato ISO esperado por Dynamics 365.
@@ -235,8 +317,21 @@ def map_com_altas_to_employee_modifications(
     """
     Mapea un registro de com_altas a formato EmployeeModifications para POST.
     """
+    estado = normalize_string(record.get('estado'))
+    estado_upper = estado.upper() if estado else ""
+    is_denegado = estado_upper in {"D", "DENEGADO", "DENEGADA"}
+    is_liquidado = estado_upper in {"L", "LIQUIDADO", "LIQUIDADA"}
+    error_value = "Yes" if is_denegado else "No"
+    correcto_value = "Yes" if is_liquidado else "No"
+    error_description_value = normalize_text_max(record.get('observa_admin')) or ""
+
     if only_processed:
-        return {'Processed': processed_value}
+        return {
+            'Processed': processed_value,
+            'Error': error_value,
+            'Correcto': correcto_value,
+            'ErrorDescription': error_description_value
+        }
 
     salario = record.get('salario')
     if isinstance(salario, Decimal):
@@ -269,7 +364,31 @@ def map_com_altas_to_employee_modifications(
         'EndDate': format_date_for_dynamics(record.get('fechafincontrato')),
         'Reasonforcontract': normalize_string(record.get('motivo_contrato')),
         'VATNum': normalize_string(record.get('nif')),
-        'Processed': processed_value
+        'Processed': processed_value,
+        'Error': error_value,
+        'Correcto': correcto_value,
+        'ErrorDescription': error_description_value
+    }
+
+    return {k: v for k, v in payload.items() if v is not None}
+
+
+def map_com_altas_to_importfrom_atisas(record: Dict[str, Any]) -> Dict[str, Any]:
+    """
+    Mapea un registro de com_altas a formato ImportfromATISAs para POST.
+    """
+    payload = {
+        "PersonnelNumber": normalize_string(record.get('nummat')),
+        "CreatedDate": format_date_for_dynamics(datetime.utcnow()),
+        "Street": normalize_string(record.get('domicilio')),
+        "City": normalize_string(record.get('localidad')),
+        "ZipCode": normalize_postal_code(record.get('cpostal')),
+        "County": normalize_string(record.get('provincia')),
+        "CountryRegionId": normalize_string(record.get('nacionalidad')),
+        "Phone": normalize_string(record.get('telefono')),
+        "Mobilephone": normalize_string(record.get('telmovil')),
+        "Email": normalize_string(record.get('email')),
+        "BankAccount": normalize_string(record.get('ccc'))
     }
 
     return {k: v for k, v in payload.items() if v is not None}
@@ -419,6 +538,11 @@ def map_employee_to_com_altas(
         # Si no es numérico, queda None
     
     codiemp = normalize_null_or_empty(record.get('CompanyIdATISA'))
+    education_level_raw = record.get('EducationLevel')
+    if education_level_raw is None:
+        education_level_raw = record.get('educationlevel')
+    if education_level_raw is None:
+        education_level_raw = record.get('LevelEducation')
     ccc_value = normalize_null_or_empty(record.get('BankAccount'))
     ccc_endpoint = normalize_null_or_empty(record.get('CCC'))
     codidepa_value = None
@@ -426,6 +550,10 @@ def map_employee_to_com_altas(
         codidepa_value = f"{codiemp}-{ccc_endpoint}"
         if len(codidepa_value) > 30:
             codidepa_value = codidepa_value[:30]
+
+    fechafincontrato_value = extract_date_from_datetime(record.get('EndDate', ''))
+    if tipo in ('A', 'M'):
+        fechafincontrato_value = None
 
     return {
         'codiemp': codiemp,
@@ -440,7 +568,7 @@ def map_employee_to_com_altas(
         'email': normalize_null_or_empty(record.get('Email')),
         'telefono': telefono_final,
         'telmovil': telmovil_final,
-        'cpostal': normalize_null_or_empty(record.get('ZipCode')),
+        'cpostal': normalize_postal_code(record.get('ZipCode')),
         'fechaalta': extract_date_from_datetime(record.get('StartDate', '')),
         'salario': salario_final,
         'ccc': ccc_value,
@@ -449,8 +577,10 @@ def map_employee_to_com_altas(
         'grupo_vacaciones': convert_string_to_int(record.get('HolidaysAbsencesGroupATISAId', '')),
         'grupo_biblioteca': convert_string_to_int(record.get('LibrariesGroupATISAId', '')),
         'grupo_anticipos': convert_string_to_int(record.get('AdvanceGroupATISAId', '')),
+        'grupo_incidencias': convert_string_to_int(record.get('IncidentGroupATISAId', '')),
         'tipo': tipo,
         'coditraba': coditraba,
+        'titulacion': normalize_education_level_code(education_level_raw),
         
         # Campos de Dirección
         'domicilio': normalize_null_or_empty(record.get('Street')),
@@ -463,7 +593,8 @@ def map_employee_to_com_altas(
         'subpuesto': normalize_null_or_empty(record.get('SubPosition')),
         'tipo_contrato': normalize_null_or_empty(record.get('ContractTypeID')),
         'fecha_antig': extract_date_from_datetime(record.get('SeniorityDate', '')),
-        'fechafincontrato': extract_date_from_datetime(record.get('EndDate', '')),
-        'motivo_contrato': normalize_null_or_empty(record.get('Reasonforcontract'))
+        'fechafincontrato': fechafincontrato_value,
+        'motivo_contrato': normalize_null_or_empty(record.get('Reasonforcontract')),
+        'observaciones_modcon': normalize_text_max(record.get('Observations'))
     }
 

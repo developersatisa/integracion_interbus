@@ -52,7 +52,7 @@ CREATE TABLE IF NOT EXISTS `dfo_com_altas` (
 | `CompanyId` | string | - | - | ❌ | No se integra de momento |
 | `EndDate` | datetime | `fechafincontrato` | date | ✅ | Fecha fin contrato (extraer solo fecha de datetime) |  
 | `SeniorityDate` | datetime | `fecha_antig` | char(100) | ✅ | Fecha antiguedad (extraer solo fecha de datetime) |
-| `educationlevel` | string | - | - | ❌ | No se integra de momento |
+| `educationlevel` | string | `titulacion` | char(2) | ✅ | Se guarda el código numérico (00, 11, 12, 21, 22, 23, 31, 32, 33, 41, 51, 52, 53, 54, 55, 56, 57, 58, 59, 60, 61, 80). Si llega en inglés, se traduce al código; si llega numérico, se normaliza a 2 dígitos. |
 | `VacationSettlement` | string | - | - | ❌ | No se integra de momento |
 | `DailySchedule` | number | - | - | ❌ | No se integra de momento |
 | `HighsLowsChangesID` | string | - | - | ❌ | No se integra de momento |
@@ -67,9 +67,9 @@ CREATE TABLE IF NOT EXISTS `dfo_com_altas` (
 | `Department` | string | - | - | ❌ | No se integra de momento |   
 | `TestingPeriodId` | string | - | - | ❌ | No se integra de momento |
 | `CCC` | string | `codidepa` | char(30) | ✅ | Se guarda como `CompanyIdATISA-CCC` |
-| `Observations` | string | - | - | ❌ | No se integra de momento |
+| `Observations` | string | `observaciones_modcon` | text | ✅ | Observaciones de modificación de contrato |
 | `SubPosition` | string | `subpuesto` | varchar(120) | ✅ | Lookup en `lista_subpuestos` (com_altas guarda `codpuesto`) |
-| `IncidentGroupATISAId` | string | - | - | ❌ | No se integra de momento |
+| `IncidentGroupATISAId` | string | `grupo_incidencias` | int(10) | ✅ | Grupo incidencias (convertir string a int) |
 | `County` | string | `provincia` | char(30) | ✅ | Si llega como ID numerico, se resuelve en `provincias_integracion.descripcion` |
 | `LeaveGroupATISAId` | string | - | - | ❌ | No se integra de momento |
 | `NationalityCountryRegion` | string/null | `nacionalidad` | int(10) | ✅ | Se busca en `acceso.paises` (cca3 -> codpais) |

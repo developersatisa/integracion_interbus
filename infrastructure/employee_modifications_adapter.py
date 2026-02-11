@@ -407,16 +407,13 @@ class EmployeeModificationsAdapter:
 
         query = f"""
             UPDATE com_altas
-            SET estado = 'D'
+            SET estado = 'N'
             WHERE {' AND '.join(where_parts)}
         """
 
         connection = None
         cursor = None
         try:
-            if not data.get('estado'):
-                data['estado'] = 'A'
-
             connection = self._get_connection_e03800()
             cursor = connection.cursor()
             cursor.execute(query, params)

@@ -226,6 +226,16 @@ def normalize_string(value: Any) -> Optional[str]:
     return value_str if value_str else None
 
 
+def normalize_string_max(value: Any, max_length: int) -> Optional[str]:
+    """
+    Normaliza valores a string y trunca a max_length.
+    """
+    value_str = normalize_string(value)
+    if value_str is None:
+        return None
+    return value_str[:max_length]
+
+
 def normalize_postal_code(value: Optional[Any], max_length: int = 5) -> Optional[str]:
     """
     Normaliza el código postal a longitud máxima.
@@ -585,12 +595,12 @@ def map_employee_to_com_altas(
     return {
         'codiemp': codiemp,
         'codicen': '001',
-        'nombre': normalize_null_or_empty(record.get('FirstName')),
-        'apellido1': normalize_null_or_empty(record.get('LastName1')),
-        'apellido2': normalize_null_or_empty(record.get('LastName2')),
+        'nombre': normalize_string_max(record.get('FirstName'), 15),
+        'apellido1': normalize_string_max(record.get('LastName1'), 20),
+        'apellido2': normalize_string_max(record.get('LastName2'), 20),
         'nif': normalize_null_or_empty(record.get('VATNum')),
         'sexo': normalize_gender(record.get('Gender')),
-        'naf': naf_final,
+        'naf': normalize_string_max(naf_final, 12),
         'fechanacimiento': extract_date_from_datetime(record.get('BirthDate', '')),
         'email': normalize_null_or_empty(record.get('Email')),
         'telefono': telefono_final,

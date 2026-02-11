@@ -397,8 +397,7 @@ class EmployeeModificationsAdapter:
         where_parts = [
             "codiemp = %s",
             "tipo = 'A'",
-            "estado IS DISTINCT FROM 'D'",
-            "(estado IS NULL OR estado = '' OR estado != 'L')",
+            "(estado IS NULL OR estado = '' OR estado NOT IN ('L','N'))",
             f"({' OR '.join(match_parts)})"
         ]
 
@@ -415,6 +414,9 @@ class EmployeeModificationsAdapter:
         connection = None
         cursor = None
         try:
+            if not data.get('estado'):
+                data['estado'] = 'A'
+
             connection = self._get_connection_e03800()
             cursor = connection.cursor()
             cursor.execute(query, params)

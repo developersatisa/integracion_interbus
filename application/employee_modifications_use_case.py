@@ -139,6 +139,21 @@ class SyncEmployeeModificationsUseCase:
         if not all([codiemp, nombre, apellido1, vatnum_normalized]):
             logger.warning("Faltan campos de identificación del trabajador")
             return {'status': 'skipped', 'reason': 'missing_fields'}
+
+        has_alta_liquidada = self.employee_adapter.has_com_altas_record(
+            codiemp,
+            nass,
+            vatnum_normalized,
+            tipo='A',
+            estados=('L',)
+        )
+        has_baja_pendiente = self.employee_adapter.has_com_altas_record(
+            codiemp,
+            nass,
+            vatnum_normalized,
+            tipo='B',
+            estados=('A', 'L')
+        )
         
         # Buscar trabajador en tabla trabajadores
         trabajador_info = self.e03800_adapter.find_trabajador(
@@ -203,6 +218,13 @@ class SyncEmployeeModificationsUseCase:
             fechaalta = active_record.get('fechaalta')
             fechabaja = active_record.get('fechabaja')  # Será None o ''
 
+            if has_baja_pendiente:
+                return {
+                    'tipo': 'A',
+                    'coditraba': '0',
+                    'status': 'ok'
+                }
+
             active_nif = normalize_null_or_empty(active_record.get('nif'))
             active_nif_normalized = str(active_nif).strip().upper() if active_nif else None
 
@@ -232,6 +254,15 @@ class SyncEmployeeModificationsUseCase:
                 }
         else:
             # CASO 2.B: NO hay trabajador ACTIVO (todos los registros tienen fechabaja)
+            if has_alta_liquidada:
+                records = trabajador_info.get('all_records') or []
+                last_record = records[0] if records else None
+                return {
+                    'tipo': 'M',
+                    'coditraba': str(last_record.get('coditraba', '0')) if last_record else '0',
+                    'active_record': last_record,
+                    'status': 'ok'
+                }
             if nass:
                 ultima_fechabaja = self.e03800_adapter.get_last_fechabaja_by_nass(
                     codiemp, str(nass).strip()
@@ -457,6 +488,16 @@ class SyncEmployeeModificationsUseCase:
                 )
                 if codsubpuesto:
                     mapped_data['subpuesto'] = codsubpuesto
+
+            categoria_raw = normalize_null_or_empty(record.get('EmploymentCategory')) or normalize_null_or_empty(record.get('Category'))
+            if codiemp and categoria_raw:
+                codicat = self.employee_adapter.resolve_puesto_codpuesto(
+                    codiemp,
+                    categoria_raw,
+                    "lista_categorias"
+                )
+                if codicat:
+                    mapped_data['categoria_puesto'] = f"{codiemp}-{codicat}"
 
             # PASO 6: Crear registros
             # 6.1: Insertar en com_altas

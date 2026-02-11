@@ -346,11 +346,11 @@ def map_com_altas_to_employee_modifications(
     """
     estado = normalize_string(record.get('estado'))
     estado_upper = estado.upper() if estado else ""
-    is_denegado = estado_upper in {"D", "DENEGADO", "DENEGADA"}
+    is_denegado = estado_upper in {"N", "DENEGADO", "DENEGADA"}
     is_liquidado = estado_upper in {"L", "LIQUIDADO", "LIQUIDADA"}
     error_value = "Yes" if is_denegado else "No"
     correcto_value = "Yes" if is_liquidado else "No"
-    error_description_value = normalize_text_max(record.get('observa_admin')) or ""
+    error_description_value = normalize_text_max(record.get('observa_atisa')) or ""
 
     if only_processed:
         return {
@@ -607,6 +607,7 @@ def map_employee_to_com_altas(
         'grupo_incidencias': convert_string_to_int(record.get('IncidentGroupATISAId', '')),
         'tipo': tipo,
         'coditraba': coditraba,
+        'estado': 'A',
         'titulacion': normalize_education_level_code(education_level_raw),
         
         # Campos de Dirección

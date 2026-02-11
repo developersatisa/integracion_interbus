@@ -7,6 +7,7 @@ from mysql.connector import Error
 from typing import Dict, Any, Optional
 from config.settings import settings
 import logging
+import unicodedata
 
 logger = logging.getLogger(__name__)
 
@@ -24,7 +25,15 @@ class EmployeeModificationsAdapter:
         self._database_acceso = "acceso"
         self._trabajadores_nif_column = None
         self._provincias_integracion_db = None
-        self._puestos_tables = {"lista_puestos", "lista_subpuestos"}
+        self._puestos_tables = {"lista_puestos", "lista_subpuestos", "lista_categorias"}
+
+    def _normalize_lookup_text(self, value: str) -> str:
+        """
+        Normaliza texto para comparaciones tolerantes (sin acentos y en minúsculas).
+        """
+        normalized = unicodedata.normalize("NFKD", value)
+        stripped = "".join(ch for ch in normalized if not unicodedata.combining(ch))
+        return " ".join(stripped.lower().split())
 
     def _truncate_str(self, value: Any, max_len: int) -> Optional[str]:
         """
@@ -422,6 +431,62 @@ class EmployeeModificationsAdapter:
             if connection:
                 connection.close()
 
+    def has_com_altas_record(
+        self,
+        codiemp: Optional[str],
+        nass: Optional[str],
+        nif: Optional[str],
+        tipo: str,
+        estados: tuple
+    ) -> bool:
+        """
+        Verifica si existe un registro en com_altas por codiemp + (naf/nif) + tipo + estado.
+        """
+        if not codiemp or (not nass and not nif):
+            return False
+
+        match_parts = []
+        params = [codiemp, tipo]
+
+        if nass:
+            match_parts.append("naf = %s")
+            params.append(str(nass).strip())
+        if nif:
+            match_parts.append("nif = %s")
+            params.append(str(nif).strip())
+
+        if not match_parts:
+            return False
+
+        estados_placeholders = ", ".join(["%s"] * len(estados))
+        params.extend(estados)
+
+        query = f"""
+            SELECT 1
+            FROM com_altas
+            WHERE codiemp = %s
+              AND tipo = %s
+              AND estado IN ({estados_placeholders})
+              AND ({' OR '.join(match_parts)})
+            LIMIT 1
+        """
+
+        connection = None
+        cursor = None
+        try:
+            connection = self._get_connection_e03800()
+            cursor = connection.cursor()
+            cursor.execute(query, params)
+            return cursor.fetchone() is not None
+        except Error as e:
+            logger.error(f"Error verificando com_altas ({tipo}): {e}")
+            raise
+        finally:
+            if cursor:
+                cursor.close()
+            if connection:
+                connection.close()
+
     def _resolve_provincias_integracion_db(self) -> str:
         """
         Detecta en qué base de datos existe provincias_integracion.
@@ -534,12 +599,22 @@ class EmployeeModificationsAdapter:
                 connection = self._get_connection_interbus_365()
             cursor = connection.cursor()
             cursor.execute(
-                "SELECT id FROM provincias_integracion WHERE descripcion = %s LIMIT 1",
+                "SELECT id FROM provincias_integracion WHERE LOWER(descripcion) = LOWER(%s) LIMIT 1",
                 (value_str,)
             )
             row = cursor.fetchone()
             if row:
                 return row[0]
+            cursor.execute(
+                "SELECT id, descripcion FROM provincias_integracion"
+            )
+            rows = cursor.fetchall() or []
+            target = self._normalize_lookup_text(value_str)
+            for prov_id, descripcion in rows:
+                if not descripcion:
+                    continue
+                if self._normalize_lookup_text(str(descripcion)) == target:
+                    return prov_id
         except Error as e:
             logger.warning(f"Error resolviendo provincia (id) {value_str}: {e}")
         finally:

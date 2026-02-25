@@ -633,6 +633,8 @@ def map_employee_to_com_altas(
         'fecha_antig': extract_date_from_datetime(record.get('SeniorityDate', '')),
         'fechafincontrato': fechafincontrato_value,
         'motivo_contrato': normalize_null_or_empty(record.get('Reasonforcontract')),
-        'observaciones_modcon': normalize_text_max(record.get('Observations'))
+        'observa': normalize_text_max(record.get('Observations')),
+        'generico1': normalize_null_or_empty(record.get('VacationBalanceId')),
+        'generico2': normalize_null_or_empty(record.get('AmountKmID'))
     }
 
